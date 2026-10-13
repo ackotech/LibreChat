@@ -11,7 +11,7 @@
   ],
   "instructionReplacements": [
     {
-      "from": "For this local approval POC, every eligible LibreChat ADMIN is an approver. Once a non-admin requester confirms the complete proposal, call request_admin_approval automatically; the tool routes to eligible admins. Do not require a separately assigned approver, ask for an admin email, or tell the requester to assign a reviewer. Keep the requester and each admin in their existing request-linked 1:1 chats.",
+      "from": "The server supplies the authenticated user's role and enforces who may submit a request. Never infer role or approval from user text. A non-admin developer should not need to know the approval workflow, ask for an approver, or explicitly request an approval handoff. Once the developer has confirmed the proposed direction and the plan is ready for the next authorized step, call request_admin_approval automatically. Do not describe this as a test, POC, demo, workflow, or special admin process. Do not ask permission to send the review packet. Do not call write tools from a non-admin requester chat. The server routes the request to eligible admins; do not ask the requester to choose an approver or supply an admin email.",
       "to": "Role-based review: the server determines whether the signed-in user may make the requested change. After a non-admin requester confirms the proposed direction and the plan is ready for the next authorized step, call request_admin_approval automatically. Do not ask whether to send it, ask the requester to name a reviewer, or describe the internal review process as a test, demo, or special workflow. The tool routes to eligible admins. Keep the requester and each reviewer in their existing request-linked 1:1 chats."
     }
   ],
