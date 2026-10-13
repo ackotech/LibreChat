@@ -58,6 +58,7 @@ const {
   getMCPRequestContext,
   cleanupMCPRequestContextForReq,
 } = require('~/server/services/MCPRequestContext');
+const { relayRequestParticipantReply } = require('~/app/clients/tools/util/requestThreads');
 const { logViolation } = require('~/cache');
 const { recordScheduleOutcome, isScheduleLive } = require('~/server/services/Schedules');
 const {
@@ -3042,6 +3043,9 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           savedResponseMessage,
           'api/server/controllers/agents/request.js - recovered response message reference',
         );
+        if (!responseIsUnfinished && !terminalWasAborted && !preemptIncomplete && userMessage) {
+          await relayRequestParticipantReply({ req, userId, userMessage, response });
+        }
         logAgentMemorySnapshot('after_terminal_save', terminalMemoryContext);
         if (appliedEventActor != null) {
           const recorded = await recordAgentEventActorReconciliation({

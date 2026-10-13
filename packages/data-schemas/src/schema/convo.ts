@@ -25,6 +25,17 @@ const convoSchema: Schema<IConversation> = new Schema(
       index: true,
       meiliIndex: true,
     },
+    requestId: {
+      type: String,
+      index: true,
+      maxlength: 128,
+    },
+    requestRole: {
+      type: String,
+      enum: ['requester', 'approver', 'collaborator'],
+    },
+    requestReplyToConversationId: { type: String, maxlength: 128 },
+    requestReplyToUserId: { type: String, maxlength: 128 },
     title: {
       type: String,
       default: 'New Chat',
@@ -398,6 +409,10 @@ convoSchema.index({ tenantId: 1, isTemporary: 1, createdAt: -1, _id: -1 });
  * to the mutable agent field only for legacy rows where the primary field is absent. */
 convoSchema.index({ tenantId: 1, isTemporary: 1, initial_agent_id: 1, createdAt: -1, _id: -1 });
 convoSchema.index({ tenantId: 1, isTemporary: 1, agent_id: 1, createdAt: -1, _id: -1 });
+convoSchema.index(
+  { requestId: 1, user: 1 },
+  { unique: true, partialFilterExpression: { requestId: { $type: 'string' } } },
+);
 convoSchema.index({ user: 1, _id: 1 });
 convoSchema.index({ user: 1, chatProjectId: 1, updatedAt: -1, _id: -1 });
 convoSchema.index({ user: 1, chatProjectId: 1, createdAt: -1, _id: -1 });

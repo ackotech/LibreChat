@@ -890,6 +890,12 @@ function getMessagesUpToTarget(messages: t.IMessage[], targetMessageId: string):
 /** Factory function that takes mongoose instance and returns the methods */
 export function createShareMethods(mongoose: typeof import('mongoose')): {
   getSharedLink: (user: string, conversationId: string) => Promise<t.GetShareLinkResult>;
+  getSharedLinkByShareId: (shareId: string) => Promise<{
+    shareId: string;
+    conversationId: string;
+    user: string;
+    _id: string;
+  } | null>;
   getSharedLinks: (
     user: string,
     pageParam?: Date | string,
@@ -1418,6 +1424,27 @@ export function createShareMethods(mongoose: typeof import('mongoose')): {
     }
   }
 
+  /** Resolve an active share to its owner and source conversation for trusted workflow recovery. */
+  async function getSharedLinkByShareId(shareId: string) {
+    if (!shareId) {
+      throw new ShareServiceError('Missing required parameters', 'INVALID_PARAMS');
+    }
+    const SharedLink = mongoose.models.SharedLink as Model<t.ISharedLink>;
+    const share = (await SharedLink.findOne({
+      shareId,
+      ...activeExpirationFilter<t.ISharedLink>(),
+    })
+      .select('shareId conversationId user _id')
+      .lean()) as Pick<t.ISharedLink, 'shareId' | 'conversationId' | 'user' | '_id'> | null;
+    if (!share?.conversationId || !share.user) return null;
+    return {
+      shareId: share.shareId || shareId,
+      conversationId: share.conversationId,
+      user: String(share.user),
+      _id: String(share._id),
+    };
+  }
+
   /**
    * Update a shared link with new messages
    */
@@ -1654,6 +1681,7 @@ export function createShareMethods(mongoose: typeof import('mongoose')): {
   // Return all methods
   return {
     getSharedLink,
+    getSharedLinkByShareId,
     getSharedLinks,
     createSharedLink,
     updateSharedLink,

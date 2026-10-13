@@ -347,6 +347,9 @@ export interface ConversationMethods {
     convoMap: Record<string, unknown>;
   }>;
   getConvo(user: string, conversationId: string): Promise<IConversation | null>;
+  getRequestConversations(input: { requestId: string; tenantId?: string }): Promise<
+    Array<Pick<IConversation, 'conversationId' | 'user' | 'title' | 'requestRole' | 'agent_id' | 'model'>>
+  >;
   getSubagentThreadForParent(input: {
     user: string;
     parentConversationId: string;
@@ -605,6 +608,35 @@ export function createConversationMethods(
     } catch (error) {
       logger.error('[getConvo] Error getting single conversation', error);
       throw new Error('Error getting single conversation');
+    }
+  }
+
+  async function getRequestConversations(input: { requestId: string; tenantId?: string }) {
+    if (!input.requestId) {
+      return [];
+    }
+    try {
+      const Conversation = mongoose.models.Conversation as Model<IConversation>;
+      const conversations = await Conversation.find({
+        requestId: input.requestId,
+        tenantId: input.tenantId ?? null,
+        ...activeExpirationFilter<IConversation>(),
+        subagentThread: { $exists: false },
+      })
+        .select('conversationId user title requestRole agent_id model')
+        .sort({ createdAt: 1, _id: 1 })
+        .lean<Array<IConversation>>();
+      return conversations.map(({ conversationId, user, title, requestRole, agent_id, model }) => ({
+        conversationId,
+        user,
+        title,
+        requestRole,
+        agent_id,
+        model,
+      }));
+    } catch (error) {
+      logger.error('[getRequestConversations] Error reading request conversations', error);
+      throw new Error('Error reading request conversations');
     }
   }
 
@@ -3589,6 +3621,7 @@ export function createConversationMethods(
     getConvosByCursor,
     getConvosQueried,
     getConvo,
+    getRequestConversations,
     getSubagentThreadForParent,
     listSubagentThreadsForParent,
     getAgentEventBinding,

@@ -744,6 +744,10 @@ const nativeTools = new Set([
   Tools.file_search,
   Tools.web_search,
   Tools.memory,
+  'request_admin_approval',
+  'request_approval',
+  'message_request_participant',
+  'get_request_context',
 ]);
 
 const mcpServerPinPrefix = `${Constants.mcp_server}${Constants.mcp_delimiter}`;

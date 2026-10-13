@@ -108,6 +108,9 @@ const deleteNullOrEmptyConversations = (
 ) => methods.deleteNullOrEmptyConversations(...args);
 const searchConversation = (...args: Parameters<ConversationMethods['searchConversation']>) =>
   methods.searchConversation(...args);
+const getRequestConversations = (
+  ...args: Parameters<ConversationMethods['getRequestConversations']>
+) => methods.getRequestConversations(...args);
 
 /** The archive sweep discovers projects either by a bounded id list or by its own
  * `archivedAt` marker, and the tests below assert which of the two a call used. */
@@ -2370,6 +2373,52 @@ describe('Conversation Operations', () => {
     it('should return null if conversation not found', async () => {
       const result = await searchConversation('non-existent-id');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getRequestConversations', () => {
+    it('returns only the request threads in the caller tenant scope', async () => {
+      await Conversation.create([
+        {
+          user: 'requester-1',
+          conversationId: 'request-thread-a',
+          requestId: 'request-1',
+          requestRole: 'requester',
+          endpoint: EModelEndpoint.openAI,
+          tenantId: 'tenant-a',
+        },
+        {
+          user: 'reviewer-1',
+          conversationId: 'request-thread-b',
+          requestId: 'request-1',
+          requestRole: 'approver',
+          endpoint: EModelEndpoint.openAI,
+          tenantId: 'tenant-a',
+        },
+        {
+          user: 'requester-2',
+          conversationId: 'other-tenant-thread',
+          requestId: 'request-1',
+          requestRole: 'requester',
+          endpoint: EModelEndpoint.openAI,
+          tenantId: 'tenant-b',
+        },
+      ]);
+
+      await expect(
+        getRequestConversations({ requestId: 'request-1', tenantId: 'tenant-a' }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationId: 'request-thread-a',
+          user: 'requester-1',
+          requestRole: 'requester',
+        }),
+        expect.objectContaining({
+          conversationId: 'request-thread-b',
+          user: 'reviewer-1',
+          requestRole: 'approver',
+        }),
+      ]);
     });
   });
 

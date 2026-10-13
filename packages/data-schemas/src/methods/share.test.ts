@@ -2510,6 +2510,32 @@ describe('Share Methods', () => {
     });
   });
 
+  describe('getSharedLinkByShareId', () => {
+    test('returns the owner and source conversation for an active link', async () => {
+      const userId = new mongoose.Types.ObjectId().toString();
+      const conversationId = `conv_${nanoid()}`;
+      const shareId = `share_${nanoid()}`;
+      await SharedLink.create({ shareId, conversationId, user: userId });
+
+      await expect(shareMethods.getSharedLinkByShareId(shareId)).resolves.toEqual(
+        expect.objectContaining({ shareId, conversationId, user: userId }),
+      );
+    });
+
+    test('does not resolve an expired link', async () => {
+      const userId = new mongoose.Types.ObjectId().toString();
+      const shareId = `share_${nanoid()}`;
+      await SharedLink.create({
+        shareId,
+        conversationId: `conv_${nanoid()}`,
+        user: userId,
+        expiredAt: new Date(Date.now() - 60 * 60 * 1000),
+      });
+
+      await expect(shareMethods.getSharedLinkByShareId(shareId)).resolves.toBeNull();
+    });
+  });
+
   describe('deleteAllSharedLinks', () => {
     test('should delete all shared links for a user', async () => {
       const userId = new mongoose.Types.ObjectId().toString();

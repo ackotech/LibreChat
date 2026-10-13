@@ -5,7 +5,7 @@ services:
   api:
     container_name: LibreChat
     ports:
-      - "${PORT}:${PORT}"
+      - "127.0.0.1:${PORT}:${PORT}"
     depends_on:
       - mongodb
       - rag_api
@@ -41,7 +41,7 @@ services:
     container_name: admin-panel
     image: registry.librechat.ai/clickhouse/librechat-admin-panel:latest
     ports:
-      - "${ADMIN_PANEL_PORT:-3000}:3000"
+      - "127.0.0.1:${ADMIN_PANEL_PORT:-3000}:3000"
     depends_on:
       - api
     restart: always

@@ -249,6 +249,10 @@ export interface ISubagentThreadReservation {
 // @ts-ignore
 export interface IConversation extends Document {
   conversationId: string;
+  requestId?: string;
+  requestRole?: 'requester' | 'approver' | 'collaborator';
+  requestReplyToConversationId?: string;
+  requestReplyToUserId?: string;
   title?: string;
   user?: string;
   messages?: Types.ObjectId[];

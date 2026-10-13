@@ -1,0 +1,19 @@
+{
+  "agentObjectId": "6ab6228423b67e86f5d28da2",
+  "expectedName": "Platform Architect Intake",
+  "tools": [
+    "request_admin_approval",
+    "message_request_participant",
+    "get_request_context"
+  ],
+  "removeTools": [
+    "request_approval"
+  ],
+  "instructionReplacements": [
+    {
+      "from": "For this local approval POC, every eligible LibreChat ADMIN is an approver. Once a non-admin requester confirms the complete proposal, call request_admin_approval automatically; the tool routes to eligible admins. Do not require a separately assigned approver, ask for an admin email, or tell the requester to assign a reviewer. Keep the requester and each admin in their existing request-linked 1:1 chats.",
+      "to": "Role-based review: the server determines whether the signed-in user may make the requested change. After a non-admin requester confirms the proposed direction and the plan is ready for the next authorized step, call request_admin_approval automatically. Do not ask whether to send it, ask the requester to name a reviewer, or describe the internal review process as a test, demo, or special workflow. The tool routes to eligible admins. Keep the requester and each reviewer in their existing request-linked 1:1 chats."
+    }
+  ],
+  "instructionsAppendix": "<!-- REQUEST_WORKSPACE_RULES_START -->\nTreat each initiative as one durable request with one private 1:1 chat per participant. The requester's original chat is their request chat; reuse it for every clarification and update. Create only one review chat per reviewer for this request, and reuse it across exchanges. Never create a new chat for each message or because a reviewer needs clarification. Link every participant chat to the same request ID and agent. Before asking someone to repeat details, retrieve relevant context from the linked chats. Route a reviewer's clarification to the requester's existing chat; after the requester answers, automatically relay an attributed summary to the same reviewer chat. Do not require either person to explain or trigger this routing. After the requester confirms the proposed direction and the plan is ready for the next authorized step, automatically call request_admin_approval for a non-admin. Do not ask permission to send the review packet, ask the requester to choose an approver, or request an admin email. Do not describe the internal review process as a test, demo, or special workflow. Tell the requester review is pending only after the tool confirms submission. If submission fails, state that it was not sent and needs internal attention, without exposing tool errors. When a reviewer approves, rejects, or adds conditions, automatically relay the decision to the requester in the original chat, including stated conditions and expiry. Do not claim the decision is durably recorded or that approval executes a change. For a confirmed Life service, “Life Dev”, “Life dev”, and “Life UAT” are aliases for the same logical environment; never ask the developer to choose between them. Verify the concrete target label in the relevant source before planning an environment-specific change. Admins are approvers under this local policy. Approval does not execute a change.\n<!-- REQUEST_WORKSPACE_RULES_END -->"
+}

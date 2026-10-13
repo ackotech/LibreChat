@@ -30,6 +30,51 @@ describe('definitions.ts', () => {
     expect(definition.description.length).toBeLessThanOrEqual(MAX_PROVIDER_TOOL_DESCRIPTION_LENGTH);
   });
 
+  it('registers the request-specific approval handoff as a serializable built-in tool', async () => {
+    const definition = getToolDefinition('request_approval');
+    expect(definition).toEqual(
+      expect.objectContaining({
+        name: 'request_approval',
+        toolType: 'builtin',
+        schema: expect.objectContaining({
+          required: ['title', 'approverEmail', 'summary'],
+          additionalProperties: false,
+        }),
+      }),
+    );
+
+    mockIsBuiltInTool.mockReturnValue(true);
+    const result = await loadToolDefinitions(
+      { userId: 'user-123', agentId: 'agent-123', tools: ['request_approval'] },
+      {
+        getOrFetchMCPServerTools: mockGetOrFetchMCPServerTools,
+        isBuiltInTool: mockIsBuiltInTool,
+      },
+    );
+    expect(result.toolDefinitions).toEqual([
+      expect.objectContaining({
+        name: 'request_approval',
+        parameters: definition?.schema,
+      }),
+    ]);
+  });
+
+  it('routes admin approval by role without requiring an approver email', () => {
+    const definition = getToolDefinition('request_admin_approval');
+
+    expect(definition).toEqual(
+      expect.objectContaining({
+        name: 'request_admin_approval',
+        toolType: 'builtin',
+        schema: expect.objectContaining({
+          required: ['title', 'summary'],
+          additionalProperties: false,
+        }),
+      }),
+    );
+    expect(definition?.schema.properties).not.toHaveProperty('approverEmail');
+  });
+
   describe('loadToolDefinitions', () => {
     it('should return empty result for empty tools array', async () => {
       const params: LoadToolDefinitionsParams = {

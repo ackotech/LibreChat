@@ -1,0 +1,51 @@
+catalog_version: 1
+status: draft
+description: >-
+  Starter taxonomy for reusable database architecture knowledge. This catalog
+  contains general guidance only; Acko-specific standards and approval rules
+  must be added from authoritative internal sources before operational use.
+
+retrieval:
+  # Always retrieve shared fundamentals for database-related tasks, then add
+  # the matching task playbook. Do not retrieve DML guidance for DDL-only work.
+  shared_topics:
+    - database.fundamentals
+  routes:
+    - topic: request-workflow.linked-conversations
+      task_types: [request_collaboration, request_approval]
+      triggers: [approval, approver, clarification, collaborator, request conversation, return answer]
+      excludes: []
+    - topic: database.architecture-provisioning
+      task_types: [database_architecture, database_provisioning]
+      triggers: [database, datastore, RDS, Aurora, database engine, new database, reuse database]
+      excludes: [table-only schema change, row-level data change]
+    - topic: database.schema-ddl-admin
+      task_types: [schema_change, database_administration]
+      triggers: [table, schema, column, index, constraint, migration, DDL, database role, grant]
+      excludes: [new managed database instance, row-level data change]
+    - topic: database.data-dml
+      task_types: [data_change]
+      triggers: [INSERT, UPDATE, DELETE, UPSERT, modify records, backfill, correct data]
+      excludes: [schema-only change, database provisioning]
+
+knowledge_topics:
+  - id: database.fundamentals
+    path: topics/database/fundamentals.md
+    status: draft
+    scope: shared
+  - id: database.architecture-provisioning
+    path: topics/database/architecture-provisioning.md
+    status: draft
+    scope: general_guidance
+  - id: database.schema-ddl-admin
+    path: topics/database/schema-ddl-admin.md
+    status: draft
+    scope: general_guidance
+  - id: database.data-dml
+    path: topics/database/data-dml.md
+    status: draft
+    scope: general_guidance
+  - id: request-workflow.linked-conversations
+    path: topics/request-workflow/linked-conversations.md
+    status: draft
+    scope: shared

@@ -454,6 +454,67 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: AskUserQuestionToolDefinition.schema as ExtendedJsonSchema,
     toolType: 'builtin',
   },
+  request_admin_approval: {
+    name: 'request_admin_approval',
+    description:
+      'Submit a completed request for review. Links this conversation to a durable request, shares a private read-only source link with approvers, and creates one stable 1:1 review chat per approver. The approver is a request role, not a LibreChat system role. Does not execute infrastructure changes.',
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', minLength: 1, maxLength: 120, description: 'Short title for the review request.' },
+        summary: { type: 'string', minLength: 1, maxLength: 8000, description: 'Agreed proposal, rationale, risks, assumptions, and requested approval.' },
+      },
+      required: ['title', 'summary'],
+      additionalProperties: false,
+    } as ExtendedJsonSchema,
+    toolType: 'builtin',
+  },
+  request_approval: {
+    name: 'request_approval',
+    description:
+      'Submit a confirmed change plan to the explicitly assigned approver for this request. The approver is not defined by their LibreChat administrator role. Reuses the approver’s 1:1 request chat and does not execute infrastructure changes.',
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', minLength: 1, maxLength: 120, description: 'Short title for the review request.' },
+        approverEmail: { type: 'string', format: 'email', description: 'Email of the person assigned to approve this request.' },
+        summary: { type: 'string', minLength: 1, maxLength: 8000, description: 'Agreed proposal, rationale, risks, assumptions, and requested approval.' },
+      },
+      required: ['title', 'approverEmail', 'summary'],
+      additionalProperties: false,
+    } as ExtendedJsonSchema,
+    toolType: 'builtin',
+  },
+  message_request_participant: {
+    name: 'message_request_participant',
+    description:
+      'Send a clarification question or concise update to a participant in this request. Reuses that participant’s single 1:1 chat for the request. When a participant answers a routed question, summarize the answer to the person who needs it in their existing request chat.',
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', format: 'email', description: 'Participant email.' },
+        message: { type: 'string', minLength: 1, maxLength: 4000, description: 'Question or concise update.' },
+        role: { type: 'string', enum: ['approver', 'collaborator'], description: 'Role for a newly linked participant.' },
+      },
+      required: ['email', 'message'],
+      additionalProperties: false,
+    } as ExtendedJsonSchema,
+    toolType: 'builtin',
+  },
+  get_request_context: {
+    name: 'get_request_context',
+    description:
+      'Retrieve recent messages from the 1:1 chats linked to the current request when another participant’s context is needed. Only threads for this request are returned.',
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', minLength: 1, maxLength: 1000, description: 'Information to look for across request chats.' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    } as ExtendedJsonSchema,
+    toolType: 'builtin',
+  },
 };
 
 export function getToolDefinition(toolName: string): ToolRegistryDefinition | undefined {

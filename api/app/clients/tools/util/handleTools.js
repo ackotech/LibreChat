@@ -65,6 +65,8 @@ const {
 const { getMCPRequestContext } = require('~/server/services/MCPRequestContext');
 const { createOpenIDSessionTokenProvider } = require('~/server/services/OpenIDSessionRefresh');
 const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSearch');
+const { createApprovalTool } = require('./adminApproval');
+const { createRequestThreadTools } = require('./requestThreads');
 const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/process');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
@@ -223,6 +225,13 @@ const loadTools = async ({
   };
 
   const customConstructors = {
+    request_approval: async () => createApprovalTool({ req: options.req, agentId: agent?.id }),
+    request_admin_approval: async () =>
+      createApprovalTool({ req: options.req, agentId: agent?.id, toolName: 'request_admin_approval' }),
+    message_request_participant: async () =>
+      createRequestThreadTools({ req: options.req, agentId: agent?.id })[0],
+    get_request_context: async () =>
+      createRequestThreadTools({ req: options.req, agentId: agent?.id })[1],
     image_gen_oai: async (_toolContextMap, dynamicToolContextMap) => {
       const authFields = getAuthFields('image_gen_oai');
       const authValues = await loadAuthValues({ userId: user, authFields });
