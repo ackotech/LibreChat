@@ -241,6 +241,59 @@ describe('request-linked participant chats', () => {
     );
   });
 
+  it('automatically relays multiple answers to the same reviewer chat without a fetch prompt', async () => {
+    db.getConvo.mockResolvedValue({
+      conversationId: 'reviewer-thread',
+      requestId: 'request-1',
+      endpoint: 'agents',
+      model: 'gpt-test',
+    });
+    db.getRequestConversations.mockResolvedValue([
+      { conversationId: 'requester-thread', user: 'requester-id', requestRole: 'requester' },
+      { conversationId: 'reviewer-thread', user: 'reviewer-id', requestRole: 'approver' },
+    ]);
+    const replyReq = {
+      user: { id: 'requester-id', name: 'Requester' },
+      body: { conversationId: 'requester-thread' },
+      resolvedConversation: {
+        conversationId: 'requester-thread',
+        requestId: 'request-1',
+        requestReplyToConversationId: 'reviewer-thread',
+        requestReplyToUserId: 'reviewer-id',
+        model: 'gpt-test',
+      },
+    };
+
+    await relayRequestParticipantReply({
+      req: replyReq,
+      userId: 'requester-id',
+      userMessage: { messageId: 'answer-1', text: 'The producer is claims-status-api.' },
+      response: { text: 'I sent the service name to the reviewer.' },
+    });
+    await relayRequestParticipantReply({
+      req: replyReq,
+      userId: 'requester-id',
+      userMessage: { messageId: 'answer-2', text: 'It can write the outbox row in the status transaction.' },
+      response: { text: 'I sent the transaction detail to the reviewer.' },
+    });
+
+    const relayedMessages = db.saveMessage.mock.calls.map(([, message]) => message);
+    expect(relayedMessages).toHaveLength(2);
+    expect(relayedMessages[0]).toEqual(expect.objectContaining({
+      conversationId: 'reviewer-thread',
+      text: expect.stringContaining('The producer is claims-status-api.'),
+    }));
+    expect(relayedMessages[1]).toEqual(expect.objectContaining({
+      conversationId: 'reviewer-thread',
+      text: expect.stringContaining('It can write the outbox row in the status transaction.'),
+    }));
+    expect(db.getMessages).not.toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'requester-thread' }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('advances a shared-link snapshot to the latest message when sharing a request thread', async () => {
     db.getSharedLink.mockResolvedValue({ success: true, shareId: 'existing-share', _id: 'share-object-id' });
     db.getMessages.mockResolvedValue([{ messageId: 'latest-message-id' }]);

@@ -2216,6 +2216,29 @@ describe('Conversation Operations', () => {
       expect(convoIds).not.toContain(expiredRetainedConvo.conversationId);
     });
 
+    it('includes request linkage in the conversation list for open-chat refresh', async () => {
+      const conversationId = uuidv4();
+      await Conversation.create({
+        conversationId,
+        user: 'user123',
+        title: 'Linked request conversation',
+        endpoint: EModelEndpoint.openAI,
+        requestId: 'request-123',
+        requestRole: 'approver',
+        isTemporary: false,
+      });
+
+      const result = await getConvosByCursor('user123');
+
+      expect(result?.conversations).toContainEqual(
+        expect.objectContaining({
+          conversationId,
+          requestId: 'request-123',
+          requestRole: 'approver',
+        }),
+      );
+    });
+
     it('should filter out temporary conversations in getConvosQueried', async () => {
       const newNonTemporaryConvo = await Conversation.create({
         conversationId: uuidv4(),

@@ -22,7 +22,7 @@ import { QueuedTurnPortalProvider } from './Steering/QueuedTurnPortal';
 import ApprovalProvider from './Messages/Content/ApprovalContext';
 import ConversationStarters from './Input/ConversationStarters';
 import { pendingApprovalActionFamily } from './approval/state';
-import { useGetMessagesByConvoId } from '~/data-provider';
+import { useGetConvoIdQuery, useGetMessagesByConvoId } from '~/data-provider';
 import Footer, { useConfiguredFooter } from './Footer';
 import { AskAnswerHostProvider } from './ask/state';
 import MessagesView from './Messages/MessagesView';
@@ -70,6 +70,22 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
 
   const fileMap = useFileMapContext();
 
+  const chatHelpers = useChatHelpers(index, conversationId);
+  const activeConversation =
+    chatHelpers.conversation?.conversationId === conversationId
+      ? chatHelpers.conversation
+      : undefined;
+  /** The persisted record is authoritative for request linkage. Conversation
+   * state is rebuilt from chat settings and can omit workflow metadata; without
+   * this fallback, an open reviewer chat would never start refreshing relayed
+   * requester updates. ChatRoute already loads this query on direct navigation,
+   * so this normally reads the same cached record. */
+  const { data: persistedConversation } = useGetConvoIdQuery(conversationId ?? '', {
+    enabled: !!conversationId && conversationId !== Constants.SEARCH,
+  });
+  const requestId = activeConversation?.requestId ?? persistedConversation?.requestId;
+  const activeSubagentThread = activeConversation?.subagentThread;
+
   const {
     data: messages = null,
     isLoading,
@@ -82,6 +98,12 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
        * messages now, so a warm conversation renders instantly from cache and
        * reconciles in the background instead of unmounting into a spinner. */
       refetchOnMount: true,
+      /** Request participants may append attributed updates while this chat is
+       * open. Refresh only linked request chats so the next human turn and the
+       * agent's context include those updates without a manual fetch request. */
+      refetchInterval:
+        requestId && !isSubmitting ? 3000 : false,
+      refetchIntervalInBackground: false,
     },
     { isStreaming: isSubmitting },
   );
@@ -90,14 +112,7 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
     return dataTree?.length === 0 ? null : (dataTree ?? null);
   }, [messages, fileMap]);
 
-  const chatHelpers = useChatHelpers(index, conversationId);
   const addedChatHelpers = useAddedResponse();
-
-  const activeConversation =
-    chatHelpers.conversation?.conversationId === conversationId
-      ? chatHelpers.conversation
-      : undefined;
-  const activeSubagentThread = activeConversation?.subagentThread;
 
   useAdaptiveSSE(rootSubmission, chatHelpers, false, index);
 

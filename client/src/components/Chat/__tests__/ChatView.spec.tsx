@@ -5,6 +5,8 @@ import ChatView from '../ChatView';
 
 const mockParams = jest.fn();
 const mockConversation = jest.fn();
+const mockPersistedConversation = jest.fn();
+const mockUseGetMessagesByConvoId = jest.fn();
 
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
@@ -18,7 +20,11 @@ jest.mock('~/hooks/AuthContext', () => ({
 }));
 
 jest.mock('~/data-provider', () => ({
-  useGetMessagesByConvoId: () => ({ data: null, isLoading: false, isFetching: false }),
+  useGetConvoIdQuery: () => ({ data: mockPersistedConversation() }),
+  useGetMessagesByConvoId: (...args: unknown[]) => {
+    mockUseGetMessagesByConvoId(...args);
+    return { data: null, isLoading: false, isFetching: false };
+  },
 }));
 
 /**
@@ -56,6 +62,8 @@ describe('ChatView page heading', () => {
   beforeEach(() => {
     mockParams.mockReturnValue({});
     mockConversation.mockReturnValue(null);
+    mockPersistedConversation.mockReturnValue(null);
+    mockUseGetMessagesByConvoId.mockClear();
   });
 
   test('exposes a single h1 to assistive technology', () => {
@@ -84,6 +92,37 @@ describe('ChatView page heading', () => {
     render(<ChatView />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'Deploy checklist' })).toBeInTheDocument();
+  });
+
+  test('refreshes linked request conversations while they are open', () => {
+    mockParams.mockReturnValue({ conversationId: 'request-chat' });
+    mockConversation.mockReturnValue({
+      conversationId: 'request-chat',
+      title: 'Request review',
+      requestId: 'request-123',
+    });
+
+    render(<ChatView />);
+
+    expect(mockUseGetMessagesByConvoId).toHaveBeenCalledWith(
+      'request-chat',
+      expect.objectContaining({ refetchInterval: 3000, refetchIntervalInBackground: false }),
+      { isStreaming: false },
+    );
+  });
+
+  test('refreshes when request linkage exists on the persisted conversation record', () => {
+    mockParams.mockReturnValue({ conversationId: 'request-chat' });
+    mockConversation.mockReturnValue({ conversationId: 'request-chat', title: 'Request review' });
+    mockPersistedConversation.mockReturnValue({ requestId: 'request-123', requestRole: 'approver' });
+
+    render(<ChatView />);
+
+    expect(mockUseGetMessagesByConvoId).toHaveBeenCalledWith(
+      'request-chat',
+      expect.objectContaining({ refetchInterval: 3000, refetchIntervalInBackground: false }),
+      { isStreaming: false },
+    );
   });
 
   test('falls back to the localized heading when a title is blank', () => {
