@@ -23,6 +23,7 @@ import type {
   SharedLinksListParams,
   SharedLinksResponse,
   TTrackedRequest,
+  TTrackedChatTranscript,
 } from 'librechat-data-provider';
 import type {
   UseInfiniteQueryOptions,
@@ -98,6 +99,20 @@ export const useTrackedRequestQuery = (
   useQuery<TTrackedRequest>(
     [QueryKeys.trackedRequest, requestId],
     () => dataService.getTrackedRequest(requestId),
+    {
+      enabled: requestId.length > 0,
+      refetchOnWindowFocus: false,
+      ...config,
+    },
+  );
+
+export const useTrackedRequestChatsQuery = (
+  requestId: string,
+  config?: UseQueryOptions<TTrackedChatTranscript[]>,
+): QueryObserverResult<TTrackedChatTranscript[]> =>
+  useQuery<TTrackedChatTranscript[]>(
+    [QueryKeys.trackedRequestChats, requestId],
+    () => dataService.getTrackedRequestChats(requestId),
     {
       enabled: requestId.length > 0,
       refetchOnWindowFocus: false,

@@ -10,6 +10,7 @@ export enum QueryKeys {
   conversation = 'conversation',
   trackedRequests = 'trackedRequests',
   trackedRequest = 'trackedRequest',
+  trackedRequestChats = 'trackedRequestChats',
   searchEnabled = 'searchEnabled',
   langfuseConnection = 'langfuseConnection',
   langfuseSessionLink = 'langfuseSessionLink',

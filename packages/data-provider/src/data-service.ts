@@ -1006,6 +1006,10 @@ export function getTrackedRequest(id: string): Promise<t.TTrackedRequest> {
   return request.get(endpoints.requestById(id));
 }
 
+export function getTrackedRequestChats(id: string): Promise<t.TTrackedChatTranscript[]> {
+  return request.get(endpoints.requestChats(id));
+}
+
 export function updateConversation(
   payload: t.TUpdateConversationRequest,
 ): Promise<t.TUpdateConversationResponse> {

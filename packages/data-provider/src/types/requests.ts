@@ -35,3 +35,18 @@ export type TTrackedRequest = {
   updatedAt: string;
   revision: number;
 };
+
+export type TTrackedChatTranscript = {
+  conversationId: string;
+  userId: string;
+  title: string;
+  role: TRequestChat['role'];
+  messages: Array<{
+    messageId: string;
+    sender?: string;
+    text: string;
+    isCreatedByUser: boolean;
+    createdAt: string;
+  }>;
+  truncated: boolean;
+};

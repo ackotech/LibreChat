@@ -2,7 +2,11 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Button, Spinner } from '@librechat/client';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { TTrackedRequest } from 'librechat-data-provider';
-import { useTrackedRequestQuery, useTrackedRequestsQuery } from '~/data-provider';
+import {
+  useTrackedRequestChatsQuery,
+  useTrackedRequestQuery,
+  useTrackedRequestsQuery,
+} from '~/data-provider';
 import { useAuthContext, useLocalize } from '~/hooks';
 
 function RequestCard({ request }: { request: TTrackedRequest }) {
@@ -29,6 +33,7 @@ function RequestCard({ request }: { request: TTrackedRequest }) {
 function RequestDetails({ request }: { request: TTrackedRequest }) {
   const localize = useLocalize();
   const { user } = useAuthContext();
+  const transcriptsQuery = useTrackedRequestChatsQuery(request.id);
   const latestApproval = request.approvals?.[request.approvals.length - 1];
   return (
     <>
@@ -52,7 +57,9 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
             </p>
             {latestApproval.conditions?.length ? (
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-text-secondary">
-                {latestApproval.conditions.map((condition) => <li key={condition}>{condition}</li>)}
+                {latestApproval.conditions.map((condition) => (
+                  <li key={condition}>{condition}</li>
+                ))}
               </ul>
             ) : null}
             {latestApproval.validUntil && (
@@ -65,7 +72,9 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
           </div>
         )}
         <p className="mt-5 text-sm text-text-secondary">
-          {localize('com_ui_request_updated', { date: new Date(request.updatedAt).toLocaleString() })}
+          {localize('com_ui_request_updated', {
+            date: new Date(request.updatedAt).toLocaleString(),
+          })}
         </p>
       </div>
 
@@ -110,6 +119,67 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
                   </span>
                 )}
               </div>
+              {transcriptsQuery.isLoading ? (
+                <div className="mt-4 flex justify-center py-4">
+                  <Spinner />
+                </div>
+              ) : transcriptsQuery.isError ? (
+                <p role="alert" className="mt-4 text-sm text-text-secondary">
+                  {localize('com_ui_request_transcripts_failed')}
+                </p>
+              ) : (
+                (() => {
+                  const transcript = transcriptsQuery.data?.find(
+                    (item) =>
+                      item.conversationId === chat.conversationId && item.userId === chat.userId,
+                  );
+                  if (!transcript) return null;
+                  return (
+                    <details className="mt-4 rounded-lg border border-border-medium bg-surface-secondary">
+                      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-text-primary">
+                        {localize('com_ui_request_show_transcript', {
+                          count: transcript.messages.length,
+                        })}
+                      </summary>
+                      <div className="space-y-3 border-t border-border-medium p-4">
+                        {transcript.messages.length ? (
+                          transcript.messages.map((message) => (
+                            <article
+                              key={message.messageId}
+                              className="rounded-lg bg-surface-primary p-3"
+                            >
+                              <div className="flex flex-wrap justify-between gap-2 text-xs text-text-secondary">
+                                <span>
+                                  {message.isCreatedByUser
+                                    ? chat.name || localize('com_ui_request_participant')
+                                    : message.sender || localize('com_ui_request_assistant')}
+                                </span>
+                                <time dateTime={message.createdAt}>
+                                  {new Date(message.createdAt).toLocaleString()}
+                                </time>
+                              </div>
+                              {message.text ? (
+                                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-text-primary">
+                                  {message.text}
+                                </p>
+                              ) : null}
+                            </article>
+                          ))
+                        ) : (
+                          <p className="text-sm text-text-secondary">
+                            {localize('com_ui_request_transcript_empty')}
+                          </p>
+                        )}
+                        {transcript.truncated ? (
+                          <p className="text-xs text-text-secondary">
+                            {localize('com_ui_request_transcript_truncated')}
+                          </p>
+                        ) : null}
+                      </div>
+                    </details>
+                  );
+                })()
+              )}
             </li>
           ))}
         </ul>
@@ -117,25 +187,31 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
 
       {request.events?.length ? (
         <section className="mt-8" aria-labelledby="request-activity-heading">
-          <h2 id="request-activity-heading" className="mb-3 text-lg font-semibold text-text-primary">
+          <h2
+            id="request-activity-heading"
+            className="mb-3 text-lg font-semibold text-text-primary"
+          >
             {localize('com_ui_request_activity')}
           </h2>
           <ol className="space-y-2 border-l border-border-medium pl-4">
-            {request.events.slice().reverse().map((event, index) => (
-              <li key={`${event.at}:${event.actorId}:${index}`} className="text-sm">
-                <span className="font-medium text-text-primary">
-                  {localize(`com_ui_request_event_${event.action}` as never)}
-                </span>
-                {event.status && (
-                  <span className="ml-2 text-text-secondary">
-                    {localize(`com_ui_request_status_${event.status}` as never)}
+            {request.events
+              .slice()
+              .reverse()
+              .map((event, index) => (
+                <li key={`${event.at}:${event.actorId}:${index}`} className="text-sm">
+                  <span className="font-medium text-text-primary">
+                    {localize(`com_ui_request_event_${event.action}` as never)}
                   </span>
-                )}
-                <p className="mt-1 text-xs text-text-secondary">
-                  {new Date(event.at).toLocaleString()}
-                </p>
-              </li>
-            ))}
+                  {event.status && (
+                    <span className="ml-2 text-text-secondary">
+                      {localize(`com_ui_request_status_${event.status}` as never)}
+                    </span>
+                  )}
+                  <p className="mt-1 text-xs text-text-secondary">
+                    {new Date(event.at).toLocaleString()}
+                  </p>
+                </li>
+              ))}
           </ol>
         </section>
       ) : null}
@@ -192,23 +268,32 @@ export default function RequestView() {
 
       {requestId ? (
         detailQuery.isLoading ? (
-          <div className="flex justify-center py-12"><Spinner /></div>
+          <div className="flex justify-center py-12">
+            <Spinner />
+          </div>
         ) : detailQuery.isError || !detailQuery.data ? (
-          <p role="alert" className="rounded-lg border border-border-medium p-4 text-text-secondary">
+          <p
+            role="alert"
+            className="rounded-lg border border-border-medium p-4 text-text-secondary"
+          >
             {localize('com_ui_request_load_failed')}
           </p>
         ) : (
           <RequestDetails request={detailQuery.data} />
         )
       ) : listQuery.isLoading ? (
-        <div className="flex justify-center py-12"><Spinner /></div>
+        <div className="flex justify-center py-12">
+          <Spinner />
+        </div>
       ) : listQuery.isError ? (
         <p role="alert" className="rounded-lg border border-border-medium p-4 text-text-secondary">
           {localize('com_ui_request_load_failed')}
         </p>
       ) : listQuery.data?.length ? (
         <div className="space-y-3">
-          {listQuery.data.map((request) => <RequestCard key={request.id} request={request} />)}
+          {listQuery.data.map((request) => (
+            <RequestCard key={request.id} request={request} />
+          ))}
         </div>
       ) : (
         <p className="rounded-lg border border-border-medium p-4 text-text-secondary">

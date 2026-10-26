@@ -33,7 +33,10 @@ uses authenticated LibreChat API routes; the control-plane token stays between b
   bodies remain in LibreChat.
 - Request IDs appear in linked chat headers and open `/requests/:requestId`. `/requests` lists only
   requests in which the signed-in user participates; pasting an ID still passes through the same
-  participant check.
+  participant check. Each request page includes expandable, read-only transcripts for its linked
+  chats, loaded from LibreChat's own message store through an authenticated route. The route checks
+  request membership, verifies each chat is linked to that request, and returns only public text
+  fields, capped at the latest 200 messages per chat.
 - An explicit approver decision is stored with conditions and optional expiry, then relayed to the
   requester in the original chat. Approval does not provision infrastructure.
 - A missing or unavailable tracker is shown as a generic internal service issue. The raw control
@@ -46,5 +49,6 @@ the same token only as a secret in the two backend workloads. Do not expose `/v1
 or public ingress. Set a distinct `deploymentId` for local, test, and production so request listings
 do not mix deployment data. The service creates its normalized tables and indexes at startup.
 
-The request page opens cross-user conversations only through LibreChat read-only share URLs. Those
-URLs remain subject to LibreChat ACL checks and are not bearer credentials for the Go service.
+The request page can also open cross-user conversations through LibreChat read-only share URLs. Those
+URLs remain subject to LibreChat ACL checks and are not bearer credentials for the Go service; the
+inline transcript view provides the request-level read-only overview without granting chat write access.
