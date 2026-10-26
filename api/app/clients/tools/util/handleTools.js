@@ -67,6 +67,7 @@ const { createOpenIDSessionTokenProvider } = require('~/server/services/OpenIDSe
 const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSearch');
 const { createApprovalTool } = require('./adminApproval');
 const { createRequestThreadTools } = require('./requestThreads');
+const { createRequestDecisionTool } = require('./requestDecision');
 const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/process');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
@@ -228,6 +229,7 @@ const loadTools = async ({
     request_approval: async () => createApprovalTool({ req: options.req, agentId: agent?.id }),
     request_admin_approval: async () =>
       createApprovalTool({ req: options.req, agentId: agent?.id, toolName: 'request_admin_approval' }),
+    record_request_decision: async () => createRequestDecisionTool({ req: options.req }),
     message_request_participant: async () =>
       createRequestThreadTools({ req: options.req, agentId: agent?.id })[0],
     get_request_context: async () =>

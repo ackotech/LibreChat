@@ -102,6 +102,7 @@ const systemTools = {
   [Tools.memory]: true,
   request_admin_approval: true,
   request_approval: true,
+  record_request_decision: true,
   message_request_participant: true,
   get_request_context: true,
 };

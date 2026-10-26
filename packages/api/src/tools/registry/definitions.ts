@@ -485,6 +485,23 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
     } as ExtendedJsonSchema,
     toolType: 'builtin',
   },
+  record_request_decision: {
+    name: 'record_request_decision',
+    description:
+      'Record an explicit approver decision for the current request, including conditions and expiry, then relay it to the original requester chat. This does not execute infrastructure changes.',
+    schema: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', enum: ['approved', 'rejected'] },
+        conditions: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
+        validUntil: { type: 'string', format: 'date-time' },
+        note: { type: 'string', maxLength: 4000 },
+      },
+      required: ['decision'],
+      additionalProperties: false,
+    } as ExtendedJsonSchema,
+    toolType: 'builtin',
+  },
   message_request_participant: {
     name: 'message_request_participant',
     description:

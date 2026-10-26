@@ -43,9 +43,11 @@ const user = require('./user');
 const mcp = require('./mcp');
 const rum = require('./rum');
 const insights = require('./insights');
+const requests = require('./requests');
 
 module.exports = {
   insights,
+  requests,
   rum,
   mcp,
   auth,

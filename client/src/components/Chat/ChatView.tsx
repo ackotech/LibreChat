@@ -18,11 +18,11 @@ import {
   useLocalize,
 } from '~/hooks';
 import { ChatContext, AddedChatContext, ChatFormProvider, useFileMapContext } from '~/Providers';
+import { useGetConvoIdQuery, useGetMessagesByConvoId } from '~/data-provider';
 import { QueuedTurnPortalProvider } from './Steering/QueuedTurnPortal';
 import ApprovalProvider from './Messages/Content/ApprovalContext';
 import ConversationStarters from './Input/ConversationStarters';
 import { pendingApprovalActionFamily } from './approval/state';
-import { useGetConvoIdQuery, useGetMessagesByConvoId } from '~/data-provider';
 import Footer, { useConfiguredFooter } from './Footer';
 import { AskAnswerHostProvider } from './ask/state';
 import MessagesView from './Messages/MessagesView';
@@ -183,6 +183,7 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
                     <h1 className="sr-only">{pageHeading}</h1>
                     <Header
                       parentConversationId={parentConversationId}
+                      requestId={requestId}
                       readOnly={isSubagentThreadReadOnly}
                     />
                     <>

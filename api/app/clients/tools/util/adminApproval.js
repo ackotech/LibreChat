@@ -9,6 +9,8 @@ const { createHash } = require('node:crypto');
 const db = require('~/models');
 const { createShareContentPreflight, grantCreationPermissions } = require('@librechat/api');
 const { createAgentAccessCheck } = require('~/server/controllers/agents/steer');
+const { updateTrackedRequest } = require('@librechat/api');
+const { syncTrackedChat, ensureRequestThreadShares } = require('./requestThreads');
 
 function stableUUID(value) {
   const hex = createHash('sha256').update(value).digest('hex').slice(0, 32).split('');
@@ -49,7 +51,18 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
       if (!sourceConversation) {
         throw new Error('The current conversation is not owned by the signed-in user.');
       }
+      const tracker = await syncTrackedChat(req, {
+        requestId: sourceConversation.requestId,
+        conversationId,
+        userId: requester.id,
+        email: requester.email,
+        name: requester.name,
+        role: 'requester',
+        agentId: sourceConversation.agent_id || agentId,
+        title: sourceConversation.title || title,
+      });
       const requestId =
+        tracker?.id ||
         sourceConversation.requestId ||
         stableUUID([requester.tenantId || '', requester.id, conversationId].join('\0'));
       await db.saveConvo(
@@ -140,6 +153,27 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
       }
 
       const sourceLink = `${(process.env.DOMAIN_CLIENT || 'http://localhost:3080').replace(/\/$/, '')}/share/${shareId}`;
+      await syncTrackedChat(req, {
+        requestId,
+        conversationId,
+        userId: requester.id,
+        email: requester.email,
+        name: requester.name,
+        role: 'requester',
+        agentId: sourceConversation.agent_id || agentId,
+        title: title.trim(),
+        readOnlyUrl: sourceLink,
+      });
+      if (req?.config?.requestTracker?.enabled === true) {
+        await updateTrackedRequest(
+          req.config.requestTracker,
+          process.env.CONTROL_PLANE_TOKEN,
+          requestId,
+          requester.tenantId || 'default',
+          requester.id,
+          { title: title.trim(), summary: summary.trim(), status: 'review' },
+        );
+      }
       const reviewConversationIds = [];
       for (const approver of authorizedApprovers) {
         const approverId = String(approver._id);
@@ -215,8 +249,29 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
         ) {
           throw new Error('The approver review chat could not be linked to the original request.');
         }
+        await syncTrackedChat(req, {
+          requestId,
+          conversationId: reviewConversationId,
+          userId: approverId,
+          email: approver.email,
+          name: approver.name,
+          role: 'approver',
+          agentId,
+          title: `Review: ${title.trim()}`,
+        });
         reviewConversationIds.push(reviewConversationId);
       }
+
+      const linkedThreads = await db.getRequestConversations({
+        requestId,
+        tenantId: requester.tenantId,
+      });
+      await ensureRequestThreadShares({
+        req,
+        threads: linkedThreads,
+        requestId,
+        participantIds: [...new Set(linkedThreads.map((thread) => String(thread.user)))],
+      });
 
       return JSON.stringify({
         status: 'submitted',

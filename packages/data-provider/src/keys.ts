@@ -8,6 +8,8 @@ export enum QueryKeys {
   pinnedConversations = 'pinnedConversations',
   searchConversations = 'searchConversations',
   conversation = 'conversation',
+  trackedRequests = 'trackedRequests',
+  trackedRequest = 'trackedRequest',
   searchEnabled = 'searchEnabled',
   langfuseConnection = 'langfuseConnection',
   langfuseSessionLink = 'langfuseSessionLink',

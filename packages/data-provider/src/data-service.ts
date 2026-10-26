@@ -998,6 +998,14 @@ export function getConversationById(id: string): Promise<s.TConversation> {
   return request.get(endpoints.conversationById(id));
 }
 
+export function getTrackedRequests(): Promise<t.TTrackedRequest[]> {
+  return request.get(endpoints.requests());
+}
+
+export function getTrackedRequest(id: string): Promise<t.TTrackedRequest> {
+  return request.get(endpoints.requestById(id));
+}
+
 export function updateConversation(
   payload: t.TUpdateConversationRequest,
 ): Promise<t.TUpdateConversationResponse> {

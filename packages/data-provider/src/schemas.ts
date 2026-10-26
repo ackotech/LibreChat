@@ -1131,6 +1131,9 @@ export const tConversationSchema = z.object({
   pinned: z.boolean().optional(),
   /** Server-derived: an active shared link exists for this conversation. Not persisted. */
   isShared: z.boolean().optional(),
+  /** Correlation ID for a tracked cross-user request; stored on linked chats only. */
+  requestId: z.string().optional(),
+  requestRole: z.enum(['requester', 'approver', 'collaborator']).optional(),
   codeApprovalMode: z.enum(CODE_APPROVAL_MODES).optional(),
   codeEnvironmentMode: z.enum(CODE_ENVIRONMENT_MODES).optional(),
   codeWorkspaces: z

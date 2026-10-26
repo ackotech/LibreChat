@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   getConfigDefaults,
   Constants,
@@ -15,9 +15,9 @@ import { TraceButton, useTraceControl } from './Trace';
 import { useGetStartupConfig } from '~/data-provider';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import SubagentThreadLink from './SubagentThreadLink';
+import { useHasAccess, useLocalize } from '~/hooks';
 import BookmarkMenu from './Menus/BookmarkMenu';
 import AddMultiConvo from './AddMultiConvo';
-import { useHasAccess } from '~/hooks';
 import { cn } from '~/utils';
 import store from '~/store';
 
@@ -31,11 +31,14 @@ const defaultInterface = getConfigDefaults().interface;
  */
 function Header({
   parentConversationId,
+  requestId,
   readOnly = false,
 }: {
   parentConversationId?: string;
+  requestId?: string;
   readOnly?: boolean;
 }) {
+  const localize = useLocalize();
   const { data: startupConfig } = useGetStartupConfig();
   const navVisible = useRecoilValue(store.sidebarExpanded);
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
@@ -94,6 +97,16 @@ function Header({
       >
         {parentConversationId != null && (
           <SubagentThreadLink threadId={parentConversationId} labelClassName="hidden lg:inline" />
+        )}
+        {requestId && (
+          <Link
+            to={`/requests/${encodeURIComponent(requestId)}`}
+            title={`${localize('com_ui_request_id')}: ${requestId}`}
+            className="flex min-w-0 max-w-[min(38vw,22rem)] items-center gap-1 rounded-md border border-border-medium bg-surface-primary/80 px-2 py-1 text-xs text-text-primary hover:bg-surface-hover"
+          >
+            <span className="shrink-0">{localize('com_ui_request_id')}:</span>
+            <span className="truncate font-mono">{requestId}</span>
+          </Link>
         )}
         {!readOnly && <ModelSelector startupConfig={startupConfig} />}
         {!readOnly && interfaceConfig.presets === true && interfaceConfig.modelSelect === true && (

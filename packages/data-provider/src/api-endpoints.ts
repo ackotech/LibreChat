@@ -124,6 +124,10 @@ export const conversations = (params: q.ConversationListParams) => {
 
 export const conversationById = (id: string) => `${conversationsRoot}/${id}`;
 
+const requestsRoot = `${BASE_URL}/api/requests`;
+export const requests = () => requestsRoot;
+export const requestById = (id: string) => `${requestsRoot}/${encodeURIComponent(id)}`;
+
 export const parentSubagents = (parentConversationId: string) =>
   `${conversationsRoot}/${encodeURIComponent(parentConversationId)}/subagents`;
 

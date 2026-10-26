@@ -746,6 +746,7 @@ const nativeTools = new Set([
   Tools.memory,
   'request_admin_approval',
   'request_approval',
+  'record_request_decision',
   'message_request_participant',
   'get_request_context',
 ]);

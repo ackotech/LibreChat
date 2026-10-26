@@ -3124,6 +3124,16 @@ export const permissionWriteAttemptsSchema = z.number().int().min(1).max(100).de
 
 export const configSchema = z.object({
   version: z.string(),
+  requestTracker: z
+    .object({
+      /** Turn on the server-side connection to the Developer Productivity control plane. */
+      enabled: z.boolean().default(false),
+      /** Internal control-plane URL. The browser never calls this service directly. */
+      baseUrl: z.string().url().optional(),
+      /** Stable deployment key used to keep local, test, and production request IDs separate. */
+      deploymentId: z.string().min(1).max(120).default('local'),
+    })
+    .default({}),
   permissions: z.object({ maxWriteAttempts: permissionWriteAttemptsSchema }).optional(),
   cache: z.boolean().default(true),
   ocr: ocrSchema.optional(),

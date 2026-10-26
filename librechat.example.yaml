@@ -4,6 +4,14 @@
 # Configuration version (required)
 version: 1.3.17
 
+# Optional request tracker for Architect workflows. Keep disabled until the
+# control-plane service is deployed and CONTROL_PLANE_TOKEN is configured in
+# the LibreChat API environment.
+# requestTracker:
+#   enabled: true
+#   baseUrl: "http://developer-productivity-control-plane:8080"
+#   deploymentId: "local"
+
 # Cache settings: Set to true to enable caching
 cache: true
 

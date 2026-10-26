@@ -79,6 +79,7 @@ export * from './prompts';
 export * from './projects';
 /* Conversations */
 export * from './conversations';
+export * from './requests/controlPlane';
 /* Skills */
 export * from './schedules';
 export * from './schedules/service';
