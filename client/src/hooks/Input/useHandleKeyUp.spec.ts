@@ -158,11 +158,39 @@ describe('useHandleKeyUp', () => {
       expect(setShowPromptsPopover).toHaveBeenCalledWith(true);
     });
 
-    it('triggers @ mention for "@" at position 1', () => {
+    it('does not open the normal @ picker before the token is disambiguated', () => {
       const ref = makeTextAreaRef('@', 1);
       const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
 
       act(() => handleKeyUp(makeKeyEvent('@')));
+
+      expect(setShowMentionPopover).not.toHaveBeenCalled();
+    });
+
+    it('opens the @ picker as soon as the reserved person prefix starts', () => {
+      const ref = makeTextAreaRef('Please ask @p', 'Please ask @p'.length);
+      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
+
+      act(() => handleKeyUp(makeKeyEvent('p')));
+
+      expect(setShowMentionPopover).toHaveBeenCalledWith(true);
+    });
+
+    it('opens the person picker only after the explicit @person prefix and a space', () => {
+      const text = '@person ';
+      const ref = makeTextAreaRef(text, text.length);
+      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
+
+      act(() => handleKeyUp(makeKeyEvent(' ')));
+
+      expect(setShowMentionPopover).toHaveBeenCalledWith(true);
+    });
+
+    it('keeps @model selection available after the prefix is disambiguated', () => {
+      const ref = makeTextAreaRef('@g', 2);
+      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
+
+      act(() => handleKeyUp(makeKeyEvent('g')));
 
       expect(setShowMentionPopover).toHaveBeenCalledWith(true);
     });
@@ -210,6 +238,16 @@ describe('useHandleKeyUp', () => {
       const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
 
       act(() => handleKeyUp(makeKeyEvent('o')));
+
+      expect(setShowMentionPopover).toHaveBeenCalledWith(true);
+    });
+
+    it('triggers @ autocomplete inside a sentence at the caret', () => {
+      const text = 'Please ask @ali to review';
+      const ref = makeTextAreaRef(text, 'Please ask @ali'.length);
+      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
+
+      act(() => handleKeyUp(makeKeyEvent('i')));
 
       expect(setShowMentionPopover).toHaveBeenCalledWith(true);
     });
@@ -435,13 +473,13 @@ describe('useHandleKeyUp', () => {
       expect(setShowPlusPopover).not.toHaveBeenCalled();
     });
 
-    it('triggers @ mention regardless of other permissions', () => {
+    it('triggers the normal @ selector regardless of other permissions once disambiguated', () => {
       mockHasPromptsAccess.current = false;
       mockHasMultiConvoAccess.current = false;
-      const ref = makeTextAreaRef('@', 1);
+      const ref = makeTextAreaRef('@g', 2);
       const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
 
-      act(() => handleKeyUp(makeKeyEvent('@')));
+      act(() => handleKeyUp(makeKeyEvent('g')));
 
       expect(setShowMentionPopover).toHaveBeenCalledWith(true);
     });

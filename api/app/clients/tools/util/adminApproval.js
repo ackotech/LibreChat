@@ -61,10 +61,7 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
         agentId: sourceConversation.agent_id || agentId,
         title: sourceConversation.title || title,
       });
-      const requestId =
-        tracker?.id ||
-        sourceConversation.requestId ||
-        stableUUID([requester.tenantId || '', requester.id, conversationId].join('\0'));
+      const requestId = tracker.id;
       await db.saveConvo(
         { userId: requester.id },
         { conversationId, requestId, requestRole: 'requester' },
@@ -188,7 +185,7 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
           '',
           summary.trim(),
           '',
-          `Read-only source conversation: ${sourceLink}`,
+          `Request thread with ${requester.name || requester.email || 'the requester'} (requester): ${sourceLink}`,
           '',
           'Please discuss your decision here. No infrastructure changes have been made.',
         ].join('\n');

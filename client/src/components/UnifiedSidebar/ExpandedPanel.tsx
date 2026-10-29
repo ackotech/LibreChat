@@ -140,7 +140,10 @@ function ExpandedPanel({
   const localize = useLocalize();
   const location = useLocation();
   const { active, setActive } = useActivePanel();
-  const effectiveActive = resolveActivePanel(active, links);
+  const routeActiveId = location.pathname === '/requests' || location.pathname.startsWith('/requests/')
+    ? 'requests'
+    : undefined;
+  const effectiveActive = routeActiveId ?? resolveActivePanel(active, links);
   const isInsightsRoute = location.pathname.startsWith('/insights');
 
   const toggleLabel = expanded ? 'com_nav_close_sidebar' : 'com_nav_open_sidebar';

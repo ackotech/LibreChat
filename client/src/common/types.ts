@@ -370,6 +370,8 @@ export type TOptions = {
    * context even though the references still show on the user bubble.
    */
   overrideQuotes?: string[];
+  /** Identities selected with @ and captured by a queued message. */
+  overrideRequestMentions?: Array<{ id: string; name: string }>;
   /** Added conversation for multi-convo feature - sent to server as part of submission payload */
   addedConvo?: t.TConversation;
   /** Reuse a durable submission identity (terminal steer recovery). */

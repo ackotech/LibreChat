@@ -19,12 +19,13 @@ import {
   useListAgentsQuery,
   useGetStartupConfig,
 } from '~/data-provider';
+import { useSearchUserMentionsQuery } from 'librechat-data-provider/react-query';
 import useAssistantListMap from '~/hooks/Assistants/useAssistantListMap';
 import { useAgentsMapContext } from '~/Providers/AgentsMapContext';
 import { mapEndpoints, getPresetTitle } from '~/utils';
 import { EndpointIcon } from '~/components/Endpoints';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
-import { filterMentionEndpoints } from './mentions';
+import { filterMentionEndpoints, shouldSearchPeople } from './mentions';
 
 const defaultInterface = getConfigDefaults().interface;
 
@@ -56,9 +57,13 @@ const assistantMapFn =
 export default function useMentions({
   assistantMap,
   includeAssistants,
+  searchPeople = false,
+  searchValue = '',
 }: {
   assistantMap: TAssistantsMap;
   includeAssistants: boolean;
+  searchPeople?: boolean;
+  searchValue?: string;
 }) {
   const hasAgentAccess = useHasAccess({
     permissionType: PermissionTypes.AGENTS,
@@ -70,6 +75,9 @@ export default function useMentions({
   const { data: modelsConfig, isLoading: isLoadingModels } = useGetModelsQuery();
   const { data: startupConfig, isLoading: isLoadingStartup } = useGetStartupConfig();
   const { data: endpointsConfig, isLoading: isLoadingEndpoints } = useGetEndpointsQuery();
+  const peopleQuery = useSearchUserMentionsQuery(searchValue.trim(), {
+    enabled: searchPeople && shouldSearchPeople(searchValue),
+  });
   const { data: endpoints = [] } = useGetEndpointsQuery({
     select: mapEndpoints,
   });
@@ -196,6 +204,13 @@ export default function useMentions({
     });
 
     const mentions = [
+      ...(searchPeople && shouldSearchPeople(searchValue)
+        ? (peopleQuery.data?.results ?? []).map((person) => ({
+            value: person.id,
+            label: person.name,
+            type: 'person' as const,
+          }))
+        : []),
       ...(modelSpecs.length > 0 ? modelSpecs : []).map((modelSpec) => ({
         value: modelSpec.name,
         label: modelSpec.label,
@@ -272,6 +287,9 @@ export default function useMentions({
     includeAssistants,
     interfaceConfig.presets,
     interfaceConfig.modelSelect,
+    searchPeople,
+    searchValue,
+    peopleQuery.data?.results,
   ]);
 
   const isLoading =
@@ -279,6 +297,7 @@ export default function useMentions({
     isLoadingModels ||
     isLoadingStartup ||
     isLoadingEndpoints ||
+    (searchPeople && peopleQuery.isFetching) ||
     (agentQueryEnabled && isLoadingAgents);
 
   return {

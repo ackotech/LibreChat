@@ -79,6 +79,7 @@ jest.mock('~/store', () => ({
     showStopButtonByIndex: () => 'showStopButton',
     pendingManualSkillsByConvoId: () => 'pendingManualSkills',
     pendingQuotesByConvoId: () => 'pendingQuotes',
+    pendingRequestMentionsByConvoId: () => 'pendingRequestMentions',
     messagesSiblingIdxFamily: () => 'messagesSiblingIdx',
     conversationByKeySelector: () => 'conversation',
   },

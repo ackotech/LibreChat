@@ -327,6 +327,12 @@ const pendingQuotesByConvoId = atomFamily<string[], string>({
   default: [],
 });
 
+/** Selected people for the next message; identity metadata is sent with that turn. */
+const pendingRequestMentionsByConvoId = atomFamily<Array<{ id: string; name: string }>, string>({
+  key: 'pendingRequestMentionsByConvoId',
+  default: [],
+});
+
 /**
  * Text handed to a conversation's composer by a surface the user is leaving —
  * today, a subagent thread continued into a chat of its own, where the panel
@@ -449,6 +455,8 @@ export type QueuedMessage = {
   /** Manual skill picks consumed from the composer at enqueue time; passed
    *  to `ask` as `overrideManualSkills` on drain. */
   manualSkills?: string[];
+  /** Selected @ identities captured at enqueue time and passed to `ask` on drain. */
+  requestMentions?: Array<{ id: string; name: string }>;
   /** Front-inserted by "Interrupt & send": stays ahead of chronologically
    *  older items when leftover steers are merged back into the queue. */
   priority?: boolean;
@@ -819,6 +827,7 @@ export default {
   pendingComposerTextByConvoId,
   pendingManualSkillsByConvoId,
   pendingQuotesByConvoId,
+  pendingRequestMentionsByConvoId,
   pendingSteersByConvoId,
   queuedMessagesByConvoId,
   settledQueuedTurnReceiptsByConvoId,

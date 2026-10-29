@@ -107,6 +107,7 @@ const createQueryClient = () => new QueryClient({ defaultOptions: { queries: { r
 function renderPanel({
   expanded = true,
   links = createLinks(),
+  initialRoute = '/',
   onCollapse = jest.fn(),
   onExpand = jest.fn(),
   onNavigate,
@@ -115,6 +116,7 @@ function renderPanel({
 }: {
   expanded?: boolean;
   links?: NavLink[];
+  initialRoute?: string;
   onCollapse?: jest.Mock;
   onExpand?: jest.Mock;
   onNavigate?: jest.Mock;
@@ -126,7 +128,7 @@ function renderPanel({
   }
 
   const result = render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialRoute]}>
       <QueryClientProvider client={createQueryClient()}>
         <RecoilRoot initializeState={initializeState}>
           <ActivePanelProvider>
@@ -153,6 +155,25 @@ describe('ExpandedPanel', () => {
   });
 
   describe('NavIconButton collapse toggle', () => {
+    it('marks the Requests entry active when viewing a request', () => {
+      const links = [
+        ...createLinks(),
+        {
+          title: 'com_ui_requests_title' as const,
+          icon: NotebookPen,
+          id: 'requests',
+          onClick: jest.fn(),
+        },
+      ];
+
+      renderPanel({ links, initialRoute: '/requests/request-123' });
+
+      expect(screen.getByRole('button', { name: 'com_ui_requests_title' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+
     it('collapses sidebar when clicking the active icon while expanded', () => {
       const { onCollapse } = renderPanel({ expanded: true });
       const activeButton = screen.getByRole('button', { name: 'com_ui_chat_history' });

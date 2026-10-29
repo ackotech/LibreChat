@@ -8,6 +8,12 @@ import useAgentCapabilities from '~/hooks/Agents/useAgentCapabilities';
 import useGetAgentsConfig from '~/hooks/Agents/useGetAgentsConfig';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
 import store from '~/store';
+import {
+  getMentionQueryContext,
+  getPersonMentionQueryContext,
+  isPartialPersonMentionPrefix,
+  isPersonMentionSearchPrefix,
+} from './mentions';
 
 /** Event keys that shouldn't trigger a command */
 const invalidKeys = {
@@ -46,6 +52,22 @@ const shouldTriggerCommand = (
   }
 
   return startPos === 1 || (startPos === text.length && text.length <= MAX_COMMAND_TRIGGER_LENGTH);
+};
+
+const shouldTriggerMention = (textAreaRef: React.RefObject<HTMLTextAreaElement>) => {
+  const textarea = textAreaRef.current;
+  const text = textarea?.value;
+  const cursor = textarea?.selectionStart;
+  if (typeof text !== 'string' || typeof cursor !== 'number') return false;
+  const beforeCursor = text.slice(0, cursor);
+  const personContext = getPersonMentionQueryContext(text, cursor);
+  const mentionContext = /(?:^|[\s([{,:;])@[^@\s]*$/u.test(beforeCursor);
+  const mentionQuery = getMentionQueryContext(text, cursor)?.query ?? '';
+  const personPrefix = isPartialPersonMentionPrefix(text, cursor);
+  return (
+    Boolean(personContext) ||
+    (mentionContext && (!personPrefix || isPersonMentionSearchPrefix(mentionQuery)))
+  );
 };
 
 /**
@@ -92,7 +114,7 @@ const useHandleKeyUp = ({
   }, [endpoint, setShowPlusPopover, setShowSkillsPopover]);
 
   const handleAtCommand = useCallback(() => {
-    if (atCommandEnabled && shouldTriggerCommand(textAreaRef, '@')) {
+    if (atCommandEnabled && shouldTriggerMention(textAreaRef)) {
       setShowMentionPopover(true);
     }
   }, [textAreaRef, setShowMentionPopover, atCommandEnabled]);
@@ -181,6 +203,11 @@ const useHandleKeyUp = ({
         return;
       }
 
+      if (atCommandEnabled && shouldTriggerMention(textAreaRef)) {
+        handleAtCommand();
+        return;
+      }
+
       const firstChar = text[0];
       const handler = commandHandlers[firstChar as keyof typeof commandHandlers];
 
@@ -188,7 +215,7 @@ const useHandleKeyUp = ({
         handler();
       }
     },
-    [textAreaRef, commandHandlers, handleUpArrow],
+    [textAreaRef, commandHandlers, handleUpArrow, atCommandEnabled, handleAtCommand],
   );
 
   return handleKeyUp;

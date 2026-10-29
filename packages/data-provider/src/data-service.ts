@@ -282,6 +282,10 @@ export function getUser(): Promise<t.TUser> {
   return request.get(endpoints.user());
 }
 
+export function searchUserMentions(query: string): Promise<q.UserMentionSearchResponse> {
+  return request.get(endpoints.userMentions(query));
+}
+
 export function updateUserPreferences(
   preferences: t.TUpdateUserPreferencesRequest,
 ): Promise<t.TUpdateUserPreferencesResponse> {

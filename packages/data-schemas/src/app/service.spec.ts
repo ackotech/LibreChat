@@ -321,3 +321,19 @@ describe('AppService memory capability', () => {
     );
   });
 });
+
+describe('AppService request tracker config', () => {
+  it('exposes request tracker settings on the effective app config', async () => {
+    const config = {
+      requestTracker: {
+        enabled: true,
+        baseUrl: 'http://developer-productivity-control-plane-local:8081',
+        deploymentId: 'local',
+      },
+    } as DeepPartial<TCustomConfig>;
+
+    const result = await AppService({ config });
+
+    expect(result.requestTracker).toEqual(config.requestTracker);
+  });
+});

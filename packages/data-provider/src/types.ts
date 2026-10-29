@@ -164,6 +164,8 @@ export type TPayload = Partial<TMessage> &
      * before the LLM turn runs.
      */
     manualSkills?: string[];
+    /** Selected people identities for this turn; request-only and not stored on message rows. */
+    requestMentions?: Array<{ id: string; name: string }>;
     /** Conversation-scoped preference for code tool approval behavior. */
     codeApprovalMode?: CodeApprovalMode;
     /** Immutable conversation choice for attached code execution. */
@@ -203,6 +205,8 @@ export type TEditedContent =
 
 export type TSubmission = {
   userMessage: TMessage;
+  /** People selected with @ for this generation; sent as request-only metadata. */
+  requestMentions?: Array<{ id: string; name: string }>;
   isEdited?: boolean;
   isContinued?: boolean;
   isTemporary: boolean;

@@ -16,6 +16,7 @@ const PLACEHOLDER = 'com_ui_mention';
 
 const mockSetShowPopover = jest.fn();
 const mockShowPopover = { current: true };
+const mockLocalize = (key: string) => key;
 
 jest.mock('recoil', () => {
   const actual = jest.requireActual('recoil');
@@ -33,7 +34,7 @@ jest.mock('recoil', () => {
 const mockUseMentions = jest.fn();
 jest.mock('~/hooks/Input/useMentions', () => ({
   __esModule: true,
-  default: () => mockUseMentions(),
+  default: (...args: unknown[]) => mockUseMentions(...args),
 }));
 
 jest.mock('~/hooks/Input/useSelectMention', () => ({
@@ -42,7 +43,7 @@ jest.mock('~/hooks/Input/useSelectMention', () => ({
 }));
 
 jest.mock('~/hooks', () => ({
-  useLocalize: () => (key: string) => key,
+  useLocalize: () => mockLocalize,
   useGetConversation: () => jest.fn(),
 }));
 
@@ -204,5 +205,65 @@ describe('Mention keyboard navigation', () => {
     expect(notPrevented).toBe(false);
     expect(mockSetShowPopover).toHaveBeenCalledWith(false);
     expect(document.activeElement).toBe(textAreaRef.current);
+  });
+});
+
+describe('person mention discovery', () => {
+  it('shows a people-search shortcut at @p and keeps normal @ suggestions available', () => {
+    const textAreaRef = makeTextarea('@p');
+    render(
+      <Mention
+        index={0}
+        popoverAtom={POPOVER_ATOM as unknown as RecoilState<boolean>}
+        newConversation={jest.fn()}
+        textAreaRef={textAreaRef}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'com_ui_search_people' })).toBeInTheDocument();
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(textAreaRef.current?.value).toBe('');
+  });
+
+  it('navigates to the people-search option and opens directory search with Enter', () => {
+    const textAreaRef = makeTextarea('@p');
+    render(
+      <Mention
+        index={0}
+        popoverAtom={POPOVER_ATOM as unknown as RecoilState<boolean>}
+        newConversation={jest.fn()}
+        textAreaRef={textAreaRef}
+      />,
+    );
+
+    const input = getInput();
+    expect(activeItemId()).toBe('mention-item-0');
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(activeItemId()).toBe('mention-item-1');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(activeItemId()).toBe('mention-item-0');
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(screen.getByPlaceholderText('com_ui_search_people')).toBeInTheDocument();
+    expect(mockUseMentions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ searchPeople: true, searchValue: '' }),
+    );
+  });
+
+  it('enters the people directory when the user types the full @person prefix and a space', () => {
+    const textAreaRef = makeTextarea('@p');
+    render(
+      <Mention
+        index={0}
+        popoverAtom={POPOVER_ATOM as unknown as RecoilState<boolean>}
+        newConversation={jest.fn()}
+        textAreaRef={textAreaRef}
+      />,
+    );
+
+    fireEvent.change(getInput(), { target: { value: 'person ' } });
+
+    expect(screen.getByPlaceholderText('com_ui_search_people')).toBeInTheDocument();
   });
 });

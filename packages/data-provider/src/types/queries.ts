@@ -206,6 +206,9 @@ export type PrincipalSearchParams = {
   types?: Array<p.PrincipalType.USER | p.PrincipalType.GROUP | p.PrincipalType.ROLE>;
 };
 
+export type UserMention = { id: string; name: string; avatar?: string };
+export type UserMentionSearchResponse = { results: UserMention[] };
+
 export type PrincipalSearchResponse = {
   query: string;
   limit: number;

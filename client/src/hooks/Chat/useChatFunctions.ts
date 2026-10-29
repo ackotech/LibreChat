@@ -286,6 +286,20 @@ export default function useChatFunctions({
     [],
   );
 
+  const drainPendingRequestMentions = useRecoilCallback(
+    ({ snapshot, reset }) =>
+      (convoId: string): Array<{ id: string; name: string }> => {
+        const atom = store.pendingRequestMentionsByConvoId(convoId);
+        const loadable = snapshot.getLoadable(atom);
+        const mentions = loadable.state === 'hasValue' ? loadable.contents : [];
+        if (mentions.length > 0) {
+          reset(atom);
+        }
+        return mentions;
+      },
+    [],
+  );
+
   const ask: TAskFunction = (
     {
       text,
@@ -307,6 +321,7 @@ export default function useChatFunctions({
       targetResponseMessageId,
       overrideManualSkills,
       overrideQuotes,
+      overrideRequestMentions,
       addedConvo,
       overrideClientRequestId,
       overrideRecoverySteerId,
@@ -451,6 +466,11 @@ export default function useChatFunctions({
         quotes = drainPendingQuotes(conversationId ?? Constants.NEW_CONVO);
       }
     }
+    const requestMentions =
+      overrideRequestMentions ??
+      (regenerateShaped || isContinued || isEdited
+        ? []
+        : drainPendingRequestMentions(conversationId ?? Constants.NEW_CONVO));
     const isEditOrContinue = isEdited || isContinued;
 
     let currentMessages: TMessage[] = overrideMessages ?? cachedMessages ?? [];

@@ -49,6 +49,8 @@ export interface FunctionTool {
 export interface AppConfig {
   /** The main custom configuration */
   config: Partial<TCustomConfig>;
+  /** Request-tracker connection settings */
+  requestTracker?: TCustomConfig['requestTracker'];
   /** OCR configuration */
   ocr?: TCustomConfig['ocr'];
   /** File paths configuration */

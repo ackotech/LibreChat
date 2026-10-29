@@ -80,7 +80,7 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
 
       <section className="mt-6" aria-labelledby="request-chats-heading">
         <h2 id="request-chats-heading" className="mb-3 text-lg font-semibold text-text-primary">
-          {localize('com_ui_request_chats')}
+          {localize('com_ui_request_threads')}
         </h2>
         <ul className="space-y-3">
           {request.chats.map((chat) => (
@@ -91,7 +91,13 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-medium text-text-primary">
-                    {chat.name || chat.email || localize('com_ui_request_participant')}
+                    {chat.role === 'requester'
+                      ? localize('com_ui_request_thread_started_by', {
+                          name: chat.name || chat.email || localize('com_ui_request_participant'),
+                        })
+                      : localize('com_ui_request_thread_to', {
+                          name: chat.name || chat.email || localize('com_ui_request_participant'),
+                        })}
                   </p>
                   <p className="mt-1 text-sm text-text-secondary">
                     {localize(`com_ui_request_role_${chat.role}` as never)}
@@ -104,7 +110,7 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
                     rel="noopener noreferrer"
                     className="text-sm font-medium text-text-primary underline underline-offset-4"
                   >
-                    {localize('com_ui_request_open_read_only_chat')}
+                    {localize('com_ui_request_open_read_only_thread')}
                   </a>
                 ) : chat.userId === user?.id ? (
                   <Link

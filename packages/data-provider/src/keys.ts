@@ -71,6 +71,7 @@ export enum QueryKeys {
   /* Memories */
   memories = 'memories',
   principalSearch = 'principalSearch',
+  userMentions = 'userMentions',
   accessRoles = 'accessRoles',
   resourcePermissions = 'resourcePermissions',
   effectivePermissions = 'effectivePermissions',

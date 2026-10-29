@@ -412,6 +412,24 @@ export const useSearchPrincipalsQuery = (
   );
 };
 
+export const useSearchUserMentionsQuery = (
+  query: string,
+  config?: UseQueryOptions<q.UserMentionSearchResponse>,
+): QueryObserverResult<q.UserMentionSearchResponse> => {
+  return useQuery<q.UserMentionSearchResponse>(
+    [QueryKeys.userMentions, query],
+    () => dataService.searchUserMentions(query),
+    {
+      enabled: query.trim().length >= 3,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      staleTime: 30000,
+      ...config,
+    },
+  );
+};
+
 export const useGetAccessRolesQuery = (
   resourceType: ResourceType,
   config?: UseQueryOptions<q.AccessRolesResponse>,

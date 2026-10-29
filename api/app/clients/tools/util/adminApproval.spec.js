@@ -7,6 +7,7 @@ jest.mock('../../../../models', () => ({
   getMessages: jest.fn(),
   findRoleByIdentifier: jest.fn(),
   getSharedLink: jest.fn(),
+  getRequestConversations: jest.fn(),
   createSharedLink: jest.fn(),
   getFiles: jest.fn(),
   grantPermission: jest.fn(),
@@ -20,9 +21,13 @@ jest.mock('~/server/controllers/agents/steer', () => ({
 
 jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
+  resolveRequestChat: jest.fn(),
+  updateTrackedRequest: jest.fn(),
   createShareContentPreflight: jest.fn(() => undefined),
   grantCreationPermissions: jest.fn(),
 }));
+
+const { resolveRequestChat, updateTrackedRequest } = require('@librechat/api');
 
 describe('request_admin_approval tool', () => {
   const req = {
@@ -34,11 +39,13 @@ describe('request_admin_approval tool', () => {
       tenantId: 'tenant-a',
     },
     body: { conversationId: 'source-conversation' },
-    config: {},
+    config: { requestTracker: { enabled: true, deploymentId: 'local' } },
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resolveRequestChat.mockResolvedValue({ id: 'request-test' });
+    updateTrackedRequest.mockResolvedValue({ id: 'request-test' });
     const conversations = new Map();
     db.getConvo.mockImplementation(async (userId, conversationId) => {
       if (userId === req.user.id && conversationId === req.body.conversationId) {
@@ -66,6 +73,9 @@ describe('request_admin_approval tool', () => {
       return saved;
     });
     db.getMessages.mockResolvedValue([]);
+    db.getRequestConversations.mockResolvedValue([
+      { conversationId: 'source-conversation', user: req.user.id, requestRole: 'requester' },
+    ]);
   });
 
   it('routes a confirmed non-admin request to admins without asking the requester for an email', async () => {
@@ -103,7 +113,10 @@ describe('request_admin_approval tool', () => {
     );
     expect(db.saveMessage).toHaveBeenCalledWith(
       { userId: '64b000000000000000000002' },
-      expect.objectContaining({ sender: 'assistant', text: expect.stringContaining(result.sourceLink) }),
+      expect.objectContaining({
+        sender: 'assistant',
+        text: expect.stringContaining(`Request thread with Developer (requester): ${result.sourceLink}`),
+      }),
       { context: 'request approval handoff' },
     );
     expect(db.saveConvo).toHaveBeenCalledWith(

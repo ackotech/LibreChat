@@ -68,6 +68,7 @@ const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSe
 const { createApprovalTool } = require('./adminApproval');
 const { createRequestThreadTools } = require('./requestThreads');
 const { createRequestDecisionTool } = require('./requestDecision');
+const { createMentionedPeopleTool } = require('./mentionedPeople');
 const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/process');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
@@ -228,12 +229,17 @@ const loadTools = async ({
   const customConstructors = {
     request_approval: async () => createApprovalTool({ req: options.req, agentId: agent?.id }),
     request_admin_approval: async () =>
-      createApprovalTool({ req: options.req, agentId: agent?.id, toolName: 'request_admin_approval' }),
+      createApprovalTool({
+        req: options.req,
+        agentId: agent?.id,
+        toolName: 'request_admin_approval',
+      }),
     record_request_decision: async () => createRequestDecisionTool({ req: options.req }),
     message_request_participant: async () =>
       createRequestThreadTools({ req: options.req, agentId: agent?.id })[0],
     get_request_context: async () =>
       createRequestThreadTools({ req: options.req, agentId: agent?.id })[1],
+    get_mentioned_people: async () => createMentionedPeopleTool({ req: options.req }),
     image_gen_oai: async (_toolContextMap, dynamicToolContextMap) => {
       const authFields = getAuthFields('image_gen_oai');
       const authValues = await loadAuthValues({ userId: user, authFields });

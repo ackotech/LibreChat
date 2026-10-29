@@ -1,6 +1,6 @@
-import { memo, useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { AutoSizer, List } from 'react-virtualized';
-import { EModelEndpoint } from 'librechat-data-provider';
+import { Constants, EModelEndpoint } from 'librechat-data-provider';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
 import { Input, Spinner, useCombobox } from '@librechat/client';
 import type { RecoilState } from 'recoil';
@@ -11,7 +11,13 @@ import useSelectMention from '~/hooks/Input/useSelectMention';
 import { useAssistantsMapContext } from '~/Providers';
 import useMentions from '~/hooks/Input/useMentions';
 import { removeCharIfLast } from '~/utils';
+import store from '~/store';
 import MentionItem from './MentionItem';
+import {
+  insertPersonMentionAtCursor,
+  isPersonMentionSearchPrefix,
+  mergeRequestMentions,
+} from '~/hooks/Input/mentions';
 
 const ROW_HEIGHT = 44;
 
@@ -26,19 +32,37 @@ type MentionProps = {
 };
 
 function MentionContent({
+  index,
   popoverAtom,
   newConversation,
   textAreaRef,
   commandChar = '@',
   placeholder = 'com_ui_mention',
   includeAssistants = true,
-}: Omit<MentionProps, 'index'>) {
+}: MentionProps) {
   const localize = useLocalize();
-  const getConversation = useGetConversation(0);
+  const getConversation = useGetConversation(index);
   const assistantsMap = useAssistantsMapContext();
   const setShowPopover = useSetRecoilState(popoverAtom);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [personMode, setPersonMode] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [inputOptions, setInputOptions] = useState<MentionOption[]>([]);
+
+  const { open, setOpen, searchValue, setSearchValue, matches } = useCombobox({
+    value: '',
+    options: inputOptions,
+  });
+  const currentConversation = getConversation();
+  const setPendingMentions = useSetRecoilState(
+    store.pendingRequestMentionsByConvoId(
+      currentConversation?.conversationId ?? Constants.NEW_CONVO,
+    ),
+  );
+
   const {
-    options,
+    options: mentionOptions,
     presets,
     isLoading,
     modelSpecs,
@@ -46,7 +70,33 @@ function MentionContent({
     modelsConfig,
     endpointsConfig,
     assistantListMap,
-  } = useMentions({ assistantMap: assistantsMap || {}, includeAssistants });
+  } = useMentions({
+    assistantMap: assistantsMap || {},
+    includeAssistants,
+    searchPeople: commandChar === '@' && personMode,
+    searchValue,
+  });
+  const canSwitchToPeopleSearch =
+    commandChar === '@' && !personMode && isPersonMentionSearchPrefix(searchValue);
+  const options = useMemo(() => {
+    if (personMode) {
+      return mentionOptions.filter((option) => option.type === 'person');
+    }
+
+    const standardOptions = mentionOptions.filter((option) => option.type !== 'person');
+    if (!canSwitchToPeopleSearch) {
+      return standardOptions;
+    }
+
+    return [
+      {
+        type: 'person-search',
+        value: 'person-search',
+        label: localize('com_ui_search_people'),
+      },
+      ...standardOptions,
+    ];
+  }, [mentionOptions, personMode, canSwitchToPeopleSearch, localize]);
   const { onSelectMention } = useSelectMention({
     presets,
     modelSpecs,
@@ -56,22 +106,13 @@ function MentionContent({
     newConversation,
   });
 
-  const [activeIndex, setActiveIndex] = useState(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [inputOptions, setInputOptions] = useState<MentionOption[]>(options);
-
-  const { open, setOpen, searchValue, setSearchValue, matches } = useCombobox({
-    value: '',
-    options: inputOptions,
-  });
-
   const initInputRef = useInitPopoverInput({
     inputRef,
     textAreaRef,
     commandChar,
     setSearchValue,
     setOpen,
+    setPersonMode,
   });
 
   const handleSelect = (mention?: MentionOption) => {
@@ -79,9 +120,41 @@ function MentionContent({
       return;
     }
 
+    if (mention.type === 'person-search') {
+      setPersonMode(true);
+      setSearchValue('');
+      setActiveIndex(0);
+      inputRef.current?.focus();
+      return;
+    }
+
+    if (mention.type === 'person') {
+      setPendingMentions((existing) =>
+        mergeRequestMentions(existing, { id: mention.value, name: mention.label ?? '' }),
+      );
+      setSearchValue('');
+      setOpen(false);
+      setPersonMode(false);
+      setShowPopover(false);
+      const textarea = textAreaRef.current;
+      if (textarea) {
+        const insertion = insertPersonMentionAtCursor(
+          textarea.value,
+          textarea.selectionStart,
+          mention.label ?? '',
+        );
+        textarea.value = insertion.text;
+        textarea.setSelectionRange(insertion.cursor, insertion.cursor);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.focus();
+      }
+      return;
+    }
+
     const defaultSelect = () => {
       setSearchValue('');
       setOpen(false);
+      setPersonMode(false);
       setShowPopover(false);
       onSelectMention?.(mention);
 
@@ -121,12 +194,28 @@ function MentionContent({
     }
   };
 
+  const handleSearchChange = (value: string) => {
+    if (
+      commandChar === '@' &&
+      !personMode &&
+      value.endsWith(' ') &&
+      isPersonMentionSearchPrefix(value.trim())
+    ) {
+      setPersonMode(true);
+      setSearchValue('');
+      return;
+    }
+    setSearchValue(value);
+  };
+
   useEffect(() => {
     if (!open) {
       setInputOptions(options);
       setActiveIndex(0);
+    } else if (commandChar === '@') {
+      setInputOptions(options);
     }
-  }, [open, options]);
+  }, [open, options, commandChar]);
 
   useEffect(() => {
     setActiveIndex((prev) => Math.min(prev, Math.max(matches.length - 1, 0)));
@@ -184,13 +273,14 @@ function MentionContent({
       <div className="popover border-token-border-light rounded-2xl border bg-surface-secondary p-2 shadow-lg">
         <Input
           ref={initInputRef}
-          placeholder={localize(placeholder)}
+          placeholder={localize(personMode ? 'com_ui_search_people' : placeholder)}
           className="mb-1 h-auto w-full rounded-none border-0 bg-surface-secondary p-2 text-sm text-text-primary focus:outline-none"
           autoComplete="off"
           value={searchValue}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               setOpen(false);
+              setPersonMode(false);
               setShowPopover(false);
               textAreaRef.current?.focus();
             }
@@ -208,6 +298,7 @@ function MentionContent({
               if (matches.length === 0) {
                 e.preventDefault();
                 setOpen(false);
+                setPersonMode(false);
                 setShowPopover(false);
                 textAreaRef.current?.focus();
                 return;
@@ -221,11 +312,12 @@ function MentionContent({
               handleSelect(matches[activeIndex] as MentionOption);
             } else if (e.key === 'Backspace' && searchValue === '') {
               setOpen(false);
+              setPersonMode(false);
               setShowPopover(false);
               textAreaRef.current?.focus();
             }
           }}
-          onChange={(e) => setSearchValue(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => {
             timeoutRef.current = setTimeout(() => {
@@ -262,7 +354,7 @@ function MentionContent({
 }
 
 const MentionPopoverContainer = memo(function MentionPopoverContainer({
-  index: _index,
+  index,
   popoverAtom,
   ...rest
 }: MentionProps) {
@@ -270,7 +362,7 @@ const MentionPopoverContainer = memo(function MentionPopoverContainer({
   if (!show) {
     return null;
   }
-  return <MentionContent popoverAtom={popoverAtom} {...rest} />;
+  return <MentionContent index={index} popoverAtom={popoverAtom} {...rest} />;
 });
 
 export default MentionPopoverContainer;

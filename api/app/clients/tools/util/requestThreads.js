@@ -28,27 +28,34 @@ async function loadRequestContext(req) {
   if (!conversation) {
     throw new Error('Could not find the current chat for the signed-in user.');
   }
-  let isReviewChat = false;
-  if (String(user.role).toUpperCase() === 'ADMIN') {
-    const initialMessages = await db.getMessages(
+  const isAdmin = String(user.role).toUpperCase() === 'ADMIN';
+  const reviewTitle = /^Review:/i.test(conversation.title || '');
+  let initialMessages = [];
+  if (isAdmin || reviewTitle || conversation.requestRole === 'approver') {
+    initialMessages = await db.getMessages(
       { user: user.id, conversationId },
       'text',
       { limit: 8, sort: { createdAt: 1 } },
     );
-    isReviewChat =
-      /^Review:/i.test(conversation.title || '') ||
-      (initialMessages || []).some((message) => {
-        const text = getMessageText(message.text);
-        return /Review requested from/i.test(text) && /\/share\/[A-Za-z0-9_-]+/.test(text);
-      });
-    if (isReviewChat) {
-      await recoverAdminReviewContext({ user, conversation, conversationId, messages: initialMessages });
-      if (!conversation.requestId || conversation.requestRole !== 'approver') {
-        throw new Error('This review chat is missing its request link. Ask the requester to resubmit the approval request.');
-      }
+  }
+  const isReviewChat =
+    reviewTitle ||
+    (initialMessages || []).some((message) => {
+      const text = getMessageText(message.text);
+      return /Review requested from/i.test(text) && /\/share\/[A-Za-z0-9_-]+/.test(text);
+    });
+  if (isReviewChat) {
+    if (!conversation.requestId || conversation.requestRole !== 'approver') {
+      await recoverReviewContext({ user, conversation, conversationId, messages: initialMessages });
+    }
+    if (!conversation.requestId || conversation.requestRole !== 'approver') {
+      throw new Error('This review chat could not be safely linked to its request. No message was sent. Contact the platform administrator.');
     }
   }
   const requestRole = conversation.requestRole || 'requester';
+  if (!conversation.requestId && requestRole !== 'requester') {
+    throw new Error('This chat is not linked to a request. Reopen it from the original request conversation.');
+  }
   const tracked = await syncTrackedChat(req, {
     requestId: conversation.requestId,
     conversationId,
@@ -59,7 +66,7 @@ async function loadRequestContext(req) {
     agentId: conversation.agent_id,
     title: conversation.title,
   });
-  const requestId = tracked?.id || conversation.requestId || stableUUID([user.tenantId || '', user.id, conversationId].join('\0'));
+  const requestId = tracked.id;
   if (!conversation.requestId || conversation.requestId !== requestId || !conversation.requestRole) {
     await db.saveConvo(
       { userId: user.id },
@@ -76,20 +83,29 @@ async function loadRequestContext(req) {
   if (!threads.some((thread) => thread.conversationId === conversationId && String(thread.user) === user.id)) {
     throw new Error('You are not a participant in this request.');
   }
-  return { user, conversation, requestId, threads };
+  return { user, conversation, requestId, threads, summary: tracked.summary || '' };
 }
 
 async function syncTrackedChat(req, chat) {
   const config = req?.config?.requestTracker;
-  if (config?.enabled !== true) return null;
-  return resolveRequestChat(config, process.env.CONTROL_PLANE_TOKEN, {
+  if (config?.enabled !== true) {
+    throw new Error('Request tracking is not available. Please contact the platform administrator.');
+  }
+  const tracked = await resolveRequestChat(config, process.env.CONTROL_PLANE_TOKEN, {
     ...chat,
     tenantId: req.user?.tenantId || 'default',
     deploymentId: config.deploymentId || 'local',
   });
+  if (!tracked?.id) {
+    throw new Error('The request tracker did not return a request ID. Please retry or contact the platform administrator.');
+  }
+  if (chat.requestId && tracked.id !== chat.requestId) {
+    throw new Error('The request tracker returned a different request ID. This chat could not be linked to the request.');
+  }
+  return tracked;
 }
 
-async function recoverAdminReviewContext({ user, conversation, conversationId, messages = [] }) {
+async function recoverReviewContext({ user, conversation, conversationId, messages = [] }) {
   const shareIds = (messages || []).flatMap((message) =>
     [...getMessageText(message.text).matchAll(/\/share\/([A-Za-z0-9_-]+)/g)].map((match) => match[1]),
   );
@@ -123,8 +139,16 @@ async function ensureRequestThreadShares({ req, threads, participantIds, request
   if (!viewerRole) throw new Error('The shared-link viewer permission role is not configured.');
   const result = [];
   const baseUrl = (process.env.DOMAIN_CLIENT || 'http://localhost:3080').replace(/\/$/, '');
+  const participants = await db.findUsers(
+    { _id: { $in: threads.map((thread) => thread.user) } },
+    '_id email name',
+    { limit: threads.length },
+  );
+  const participantsById = new Map(participants.map((person) => [String(person._id), person]));
   for (const thread of threads) {
     const ownerId = String(thread.user);
+    const participant = participantsById.get(ownerId);
+    const displayName = participant?.name || participant?.email || thread.requestRole || 'participant';
     const conversationId = thread.conversationId;
     const preflight = createShareContentPreflight(req.config?.filters, {
       snapshotFiles: false,
@@ -180,6 +204,9 @@ async function ensureRequestThreadShares({ req, threads, participantIds, request
     result.push({
       conversationId,
       role: thread.requestRole,
+      label: thread.requestRole === 'requester'
+        ? `Request started by ${displayName}`
+        : `Thread to ${displayName}`,
       link: `${baseUrl}/share/${shareId}`,
     });
     if (requestId) {
@@ -418,10 +445,27 @@ function createRequestThreadTools({ req, agentId }) {
         requestId: request.requestId,
         participantIds: [...new Set([...participantIds, targetId])],
       });
-      const contextLinks = contextShares.map((thread) => `- ${thread.link}`).join('\n');
+      const contextLinks = contextShares
+        .map((thread) => `- ${thread.label || `Thread to ${thread.role || 'participant'}`}: ${thread.link}`)
+        .join('\n');
+      const priorMessages = await db.getMessages(
+        { user: targetId, conversationId: targetConversationId },
+        'text',
+        { limit: 50, sort: { createdAt: 1 } },
+      );
+      const hasRequestBackground = priorMessages.some((item) =>
+        /Request background:/i.test(getMessageText(item.text)),
+      );
+      const requestSummary = (request.summary || '').trim();
+      const clippedSummary = requestSummary.length > 3500
+        ? `${requestSummary.slice(0, 3500).trimEnd()}\n[Summary shortened; see the linked requester thread for full context.]`
+        : requestSummary;
       const messageWithContext = [
+        ...(!hasRequestBackground && clippedSummary
+          ? ['Request background:', clippedSummary, '']
+          : []),
         message.trim(),
-        ...(contextLinks ? ['', 'Read-only context from this request:', contextLinks] : []),
+        ...(contextLinks ? ['', 'Other request threads (read-only):', contextLinks] : []),
       ].join('\n');
       await appendAssistantMessage({ userId: targetId, conversation: targetConversation, text: messageWithContext });
       const link = `${(process.env.DOMAIN_CLIENT || 'http://localhost:3080').replace(/\/$/, '')}/c/${targetConversationId}`;
@@ -467,6 +511,7 @@ function createRequestThreadTools({ req, agentId }) {
           const participant = usersById.get(thread.user);
           return {
             participant: participant?.name || participant?.email || thread.user,
+            email: participant?.email || '',
             role: thread.requestRole || 'collaborator',
             conversationId: thread.conversationId,
             messages: messages.reverse().map((item) => ({
@@ -477,7 +522,12 @@ function createRequestThreadTools({ req, agentId }) {
           };
         }),
       );
-      return JSON.stringify({ query, requestId: request.requestId, threads: results });
+      return JSON.stringify({
+        query,
+        requestId: request.requestId,
+        summary: request.summary,
+        threads: results,
+      });
     },
   });
 
@@ -490,7 +540,7 @@ module.exports = {
   syncTrackedChat,
   appendAssistantMessage,
   relayRequestParticipantReply,
-  recoverAdminReviewContext,
+  recoverReviewContext,
   ensureRequestThreadShares,
   stableUUID,
 };

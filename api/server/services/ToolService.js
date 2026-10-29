@@ -749,6 +749,7 @@ const nativeTools = new Set([
   'record_request_decision',
   'message_request_participant',
   'get_request_context',
+  'get_mentioned_people',
 ]);
 
 const mcpServerPinPrefix = `${Constants.mcp_server}${Constants.mcp_delimiter}`;
