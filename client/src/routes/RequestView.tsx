@@ -35,6 +35,32 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
   const { user } = useAuthContext();
   const transcriptsQuery = useTrackedRequestChatsQuery(request.id);
   const latestApproval = request.approvals?.[request.approvals.length - 1];
+  const threadLabel = (chat: (typeof request.chats)[number]) =>
+    chat.role === 'requester'
+      ? localize('com_ui_request_thread_started_by', {
+          name: chat.name || chat.email || localize('com_ui_request_participant'),
+        })
+      : localize('com_ui_request_thread_to', {
+          name: chat.name || chat.email || localize('com_ui_request_participant'),
+        });
+  const threadHref = (chat: (typeof request.chats)[number]) =>
+    chat.readOnlyUrl ??
+    (chat.userId === user?.id ? `/c/${encodeURIComponent(chat.conversationId)}` : undefined);
+  const conversationHistory = (transcriptsQuery.data ?? [])
+    .flatMap((transcript) => {
+      const chat = request.chats.find(
+        (item) =>
+          item.conversationId === transcript.conversationId && item.userId === transcript.userId,
+      );
+      if (!chat) return [];
+      return transcript.messages
+        .filter((message) => message.text.trim().length > 0)
+        .map((message) => ({ chat, transcript, message }));
+    })
+    .sort(
+      (left, right) =>
+        new Date(left.message.createdAt).getTime() - new Date(right.message.createdAt).getTime(),
+    );
   return (
     <>
       <div className="rounded-xl border border-border-medium bg-surface-primary p-5">
@@ -78,6 +104,78 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
         </p>
       </div>
 
+      {conversationHistory.length > 0 ? (
+        <section className="mt-8" aria-labelledby="request-conversation-history-heading">
+          <h2
+            id="request-conversation-history-heading"
+            className="mb-3 text-lg font-semibold text-text-primary"
+          >
+            {localize('com_ui_request_conversation_history')}
+          </h2>
+          <p className="mb-3 text-sm text-text-secondary">
+            {localize('com_ui_request_conversation_history_description')}
+          </p>
+          <ol className="space-y-3 border-l border-border-medium pl-4">
+            {conversationHistory.map(({ chat, transcript, message }) => {
+              const href = threadHref(chat);
+              return (
+                <li key={`${chat.conversationId}:${message.messageId}`}>
+                  <article className="rounded-xl border border-border-medium bg-surface-primary p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-text-primary">{threadLabel(chat)}</p>
+                        <p className="mt-1 text-xs text-text-secondary">
+                          {message.isCreatedByUser
+                            ? chat.name || localize('com_ui_request_participant')
+                            : message.sender || localize('com_ui_request_assistant')}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
+                        <time dateTime={message.createdAt}>
+                          {new Date(message.createdAt).toLocaleString()}
+                        </time>
+                        {href ? (
+                          <a
+                            href={href}
+                            target={chat.readOnlyUrl ? '_blank' : undefined}
+                            rel={chat.readOnlyUrl ? 'noopener noreferrer' : undefined}
+                            className="font-medium text-text-primary underline underline-offset-4"
+                          >
+                            {localize('com_ui_request_open_source_thread')}
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                    {message.text.length > 400 ? (
+                      <details className="mt-3">
+                        <summary className="cursor-pointer whitespace-pre-wrap break-words text-sm text-text-primary">
+                          {message.text.slice(0, 240).trimEnd()}…{' '}
+                          <span className="font-medium underline underline-offset-4">
+                            {localize('com_ui_request_show_full_message')}
+                          </span>
+                        </summary>
+                        <p className="mt-3 whitespace-pre-wrap break-words text-sm text-text-primary">
+                          {message.text}
+                        </p>
+                      </details>
+                    ) : (
+                      <p className="mt-3 whitespace-pre-wrap break-words text-sm text-text-primary">
+                        {message.text}
+                      </p>
+                    )}
+                    {transcript.truncated ? (
+                      <p className="mt-2 text-xs text-text-secondary">
+                        {localize('com_ui_request_transcript_truncated')}
+                      </p>
+                    ) : null}
+                  </article>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : null}
+
       <section className="mt-6" aria-labelledby="request-chats-heading">
         <h2 id="request-chats-heading" className="mb-3 text-lg font-semibold text-text-primary">
           {localize('com_ui_request_threads')}
@@ -91,13 +189,7 @@ function RequestDetails({ request }: { request: TTrackedRequest }) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-medium text-text-primary">
-                    {chat.role === 'requester'
-                      ? localize('com_ui_request_thread_started_by', {
-                          name: chat.name || chat.email || localize('com_ui_request_participant'),
-                        })
-                      : localize('com_ui_request_thread_to', {
-                          name: chat.name || chat.email || localize('com_ui_request_participant'),
-                        })}
+                    {threadLabel(chat)}
                   </p>
                   <p className="mt-1 text-sm text-text-secondary">
                     {localize(`com_ui_request_role_${chat.role}` as never)}

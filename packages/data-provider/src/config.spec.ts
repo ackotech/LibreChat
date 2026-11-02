@@ -27,6 +27,57 @@ const endpointsConfig: TEndpointsConfig = {
   Gemini: { type: EModelEndpoint.custom, userProvide: false, order: 9999 },
 };
 
+describe('request tracker config', () => {
+  it('stays disabled by default when no tracker config is supplied', () => {
+    expect(configSchema.parse({ version: '1.0' }).requestTracker).toEqual({
+      enabled: false,
+      deploymentId: 'local',
+    });
+  });
+
+  it('requires a base URL before enabling request tracking', () => {
+    const result = configSchema.safeParse({
+      version: '1.0',
+      requestTracker: { enabled: true },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('treats a blank base URL as unset while request tracking is disabled', () => {
+    const result = configSchema.safeParse({
+      version: '1.0',
+      requestTracker: { enabled: false, baseUrl: '   ' },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.requestTracker.baseUrl).toBeUndefined();
+    }
+  });
+
+  it.each(['', '   ', 'ftp://tracker.internal', 'https://user:pass@tracker.internal'])(
+    'rejects an unsafe or empty tracker URL: %j',
+    (baseUrl) => {
+      const result = configSchema.safeParse({
+        version: '1.0',
+        requestTracker: { enabled: true, baseUrl },
+      });
+
+      expect(result.success).toBe(false);
+    },
+  );
+
+  it('accepts an internal HTTP URL for the enabled tracker', () => {
+    const result = configSchema.safeParse({
+      version: '1.0',
+      requestTracker: { enabled: true, baseUrl: 'http://tracker.internal:8080' },
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('authenticated 2FA management rate limits', () => {
   it('accepts an account budget and defaults an empty configuration to seven requests', () => {
     for (const [input, expected] of [

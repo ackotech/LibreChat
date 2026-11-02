@@ -93,17 +93,20 @@ router.get('/:requestId/chats', async (req, res) => {
       tenantId,
       userId,
     );
-    const linked = await db.getRequestConversations({ requestId: request.id, tenantId });
-    const allowedChats = new Map(
-      request.chats.map((chat) => [`${chat.userId}:${chat.conversationId}`, chat]),
-    );
+    // The tracker owns the authoritative request-to-thread relationship. Do not
+    // rediscover it through Conversation.requestId: existing linked chats may
+    // predate that local correlation field being written.
+    const linked = request.chats.map((chat) => ({
+      conversationId: chat.conversationId,
+      user: chat.userId,
+      title: chat.name,
+      requestRole: chat.role,
+    }));
     const maxMessagesPerChat = 200;
 
     const chats = await Promise.all(
       linked.map(async (thread) => {
         const ownerId = String(thread.user);
-        const chat = allowedChats.get(`${ownerId}:${thread.conversationId}`);
-        if (!chat) return null;
 
         const rows = await db.getMessages(
           { conversationId: thread.conversationId, user: ownerId },
@@ -125,8 +128,8 @@ router.get('/:requestId/chats', async (req, res) => {
         return {
           conversationId: thread.conversationId,
           userId: ownerId,
-          title: thread.title || chat.name || 'Chat',
-          role: chat.role,
+          title: thread.title || 'Chat',
+          role: thread.requestRole,
           messages,
           truncated,
         };

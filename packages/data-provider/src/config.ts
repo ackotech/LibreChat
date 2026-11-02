@@ -3122,18 +3122,47 @@ export type TOpenIdDiscoveryConfig = z.infer<typeof openIdDiscoverySchema>;
 /** Maximum CAS attempts per ACL document, including the initial attempt. */
 export const permissionWriteAttemptsSchema = z.number().int().min(1).max(100).default(3);
 
+const requestTrackerConfigSchema = z
+  .object({
+    /** Turn on the server-side connection to the Developer Productivity control plane. */
+    enabled: z.boolean().default(false),
+    /** Internal control-plane URL. The browser never calls this service directly. */
+    baseUrl: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z
+        .string()
+        .trim()
+        .url()
+        .refine((value) => {
+          try {
+            const url = new URL(value);
+            return (
+              (url.protocol === 'http:' || url.protocol === 'https:') &&
+              !url.username &&
+              !url.password
+            );
+          } catch {
+            return false;
+          }
+        }, 'Must be an HTTP(S) URL without embedded credentials')
+        .optional(),
+    ),
+    /** Stable deployment key used to keep local, test, and production request IDs separate. */
+    deploymentId: z.string().min(1).max(120).default('local'),
+  })
+  .superRefine((config, context) => {
+    if (config.enabled && !config.baseUrl) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['baseUrl'],
+        message: 'Required when requestTracker.enabled is true',
+      });
+    }
+  });
+
 export const configSchema = z.object({
   version: z.string(),
-  requestTracker: z
-    .object({
-      /** Turn on the server-side connection to the Developer Productivity control plane. */
-      enabled: z.boolean().default(false),
-      /** Internal control-plane URL. The browser never calls this service directly. */
-      baseUrl: z.string().url().optional(),
-      /** Stable deployment key used to keep local, test, and production request IDs separate. */
-      deploymentId: z.string().min(1).max(120).default('local'),
-    })
-    .default({}),
+  requestTracker: requestTrackerConfigSchema.default({}),
   permissions: z.object({ maxWriteAttempts: permissionWriteAttemptsSchema }).optional(),
   cache: z.boolean().default(true),
   ocr: ocrSchema.optional(),

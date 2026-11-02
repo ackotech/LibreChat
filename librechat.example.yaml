@@ -6,7 +6,9 @@ version: 1.3.17
 
 # Optional request tracker for Architect workflows. Keep disabled until the
 # control-plane service is deployed and CONTROL_PLANE_TOKEN is configured in
-# the LibreChat API environment.
+# the LibreChat API environment. When enabled, baseUrl is required and must be
+# an internal HTTP(S) URL reachable from the LibreChat API runtime. Do not put
+# credentials in the URL; keep CONTROL_PLANE_TOKEN in the backend secret store.
 # requestTracker:
 #   enabled: true
 #   baseUrl: "http://developer-productivity-control-plane:8080"

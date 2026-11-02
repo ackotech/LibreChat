@@ -251,6 +251,44 @@ describe('person mention discovery', () => {
     );
   });
 
+  it('navigates and selects directory results with ArrowUp, ArrowDown, and Enter', () => {
+    const people: MentionOption[] = [
+      makeMention({ type: 'person', label: 'Alex Security', value: 'alex-id' }),
+      makeMention({ type: 'person', label: 'Alex DevOps', value: 'devops-id' }),
+    ];
+    const textAreaRef = makeTextarea('@p');
+    render(
+      <Mention
+        index={0}
+        popoverAtom={POPOVER_ATOM as unknown as RecoilState<boolean>}
+        newConversation={jest.fn()}
+        textAreaRef={textAreaRef}
+      />,
+    );
+
+    const mentionInput = getInput();
+    fireEvent.keyDown(mentionInput, { key: 'Enter' });
+    const peopleInput = screen.getByPlaceholderText('com_ui_search_people');
+
+    mockUseMentions.mockReturnValue({
+      ...mentionsBundle,
+      options: people,
+    });
+    fireEvent.change(peopleInput, { target: { value: 'alex' } });
+
+    expect(activeItemId()).toBe('mention-item-0');
+    fireEvent.keyDown(peopleInput, { key: 'ArrowDown' });
+    expect(activeItemId()).toBe('mention-item-1');
+    expect(document.getElementById('mention-item-1')).toHaveTextContent('Alex Security');
+    fireEvent.keyDown(peopleInput, { key: 'ArrowUp' });
+    expect(activeItemId()).toBe('mention-item-0');
+    fireEvent.keyDown(peopleInput, { key: 'ArrowDown' });
+    expect(activeItemId()).toBe('mention-item-1');
+    fireEvent.keyDown(peopleInput, { key: 'Enter' });
+
+    expect(textAreaRef.current?.value).toBe('@person Alex Security ');
+  });
+
   it('enters the people directory when the user types the full @person prefix and a space', () => {
     const textAreaRef = makeTextarea('@p');
     render(
