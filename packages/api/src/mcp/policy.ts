@@ -20,13 +20,19 @@ export function assertMCPEndpointToolAllowed(
   assertMCPToolAllowed(target?.allowedTools, toolName);
   if (!target?.url) return;
   const origin = new URL(target.url).origin;
-  for (const server of servers) {
-    if (
+  const governed = servers.filter(
+    (server) =>
       (server.source === 'yaml' || server.source === 'config') &&
+      server.allowedTools != null &&
       server.url &&
-      new URL(server.url).origin === origin
-    ) {
-      assertMCPToolAllowed(server.allowedTools, toolName);
-    }
+      new URL(server.url).origin === origin,
+  );
+  if (governed.length) {
+    // Multiple operator endpoints on one service may expose disjoint catalogs.
+    // An alias gets only their explicitly approved union, never arbitrary tools.
+    assertMCPToolAllowed(
+      governed.flatMap((server) => server.allowedTools ?? []),
+      toolName,
+    );
   }
 }

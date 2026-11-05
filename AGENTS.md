@@ -218,3 +218,7 @@ Treat prompts, skills, and retrieved knowledge as guidance. Authorization comes 
 - The live LOCAL agent setup is the intended behavior for this project. Before syncing, compare live definitions with Git and preserve reviewed local improvements, including knowledge/code intelligence tools and participant routing. Never overwrite local or UAT from stale definitions. Capture reviewed definitions in Git, sync through the maintained scripts, and verify deployed state afterward.
 
 Required regression coverage for affected changes: forged request/reviewer metadata; unauthorized and cross-tenant invitations; blocked MCP execution from another agent; stale/modified/expired/conditional approvals; and attributed relays with the same request ID and one conversation per participant. Use isolated test data. Do not run write tools on real infrastructure as a security test. Report what was tested and any boundary that remains outside this repository; never describe the system as hack-proof.
+
+### Active knowledge backend
+
+Use Code Intelligence's Knowledge MCP with `codex/okf-knowledge-base`. The same knowledge repository's `feat/local-admin-approval-poc` branch is the legacy RAG format. Keep branches separate. Do not restore File Search instructions or re-enable it on the managed Architect as a substitute for OKF synchronization. Verify concept content against the intended Git commit using the OKF verifier.

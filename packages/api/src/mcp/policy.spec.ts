@@ -1,6 +1,24 @@
 import { assertMCPToolAllowed, assertMCPEndpointToolAllowed } from './policy';
 
 describe('operator MCP tool policy', () => {
+  it('supports separate code and knowledge catalogs hosted on the same origin', () => {
+    const code = {
+      source: 'yaml',
+      url: 'http://localhost:8766/mcp',
+      allowedTools: ['search_code'],
+    };
+    const knowledge = {
+      source: 'yaml',
+      url: 'http://localhost:8766/knowledge/mcp',
+      allowedTools: ['search_knowledge'],
+    };
+    expect(() =>
+      assertMCPEndpointToolAllowed([code, knowledge], code, 'search_code'),
+    ).not.toThrow();
+    expect(() =>
+      assertMCPEndpointToolAllowed([code, knowledge], knowledge, 'search_knowledge'),
+    ).not.toThrow();
+  });
   it('does not let a saved user-server alias bypass the operator policy', () => {
     expect(() =>
       assertMCPEndpointToolAllowed(
