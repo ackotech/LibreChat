@@ -30,17 +30,19 @@ jest.mock('~/server/controllers/agents/steer', () => ({
 jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
   resolveRequestChat: jest.fn(),
+  getTrackedRequest: jest.fn(),
+  listTrackedRequests: jest.fn(),
   createShareContentPreflight: jest.fn(() => undefined),
   grantCreationPermissions: jest.fn(),
 }));
 
-const { resolveRequestChat } = require('@librechat/api');
+const { resolveRequestChat, getTrackedRequest, listTrackedRequests } = require('@librechat/api');
 
 describe('request-linked participant chats', () => {
   const source = {
     conversationId: 'requester-thread',
     requestId: 'request-1',
-    requestRole: 'requester',
+    requestRole: 'approver',
     title: 'Request: SQS',
     endpoint: 'agents',
     agent_id: 'architect-agent',
@@ -54,6 +56,9 @@ describe('request-linked participant chats', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    source.requestRole = 'approver';
+    process.env.CONTROL_PLANE_TOKEN = 'test-service-token';
+    req.config.requestTracker.baseUrl = 'https://tracker.test';
     const conversations = new Map();
     db.getConvo.mockImplementation(async (userId, conversationId) =>
       userId === req.user.id && conversationId === source.conversationId
@@ -69,7 +74,7 @@ describe('request-linked participant chats', () => {
       { conversationId: source.conversationId, user: req.user.id, requestRole: 'requester' },
     ]);
     db.findUsers.mockResolvedValue([
-      { _id: 'collaborator-id', email: 'collaborator@example.com', name: 'Collaborator' },
+      { _id: 'collaborator-id', email: 'collaborator@example.com', name: 'Collaborator', tenantId: 'tenant-a' },
     ]);
     db.saveConvo.mockImplementation(async ({ userId }, convo) => {
       const saved = { ...convo, user: userId };
@@ -77,7 +82,15 @@ describe('request-linked participant chats', () => {
       return saved;
     });
     db.getMessages.mockResolvedValue([]);
-    resolveRequestChat.mockResolvedValue({ id: 'request-1', summary: 'Claims status updates feed two consumers.' });
+    const tracked = { id: 'request-1', summary: 'Claims status updates feed two consumers.', planRevision: 1, planHash: 'hash', chats: [
+      { userId: 'requester-id', conversationId: source.conversationId, role: 'approver' },
+      { userId: 'security-id', conversationId: 'security-thread', role: 'approver' },
+      { userId: 'devops-id', conversationId: 'devops-thread', role: 'collaborator' },
+    ] };
+    resolveRequestChat.mockResolvedValue(tracked);
+    getTrackedRequest.mockResolvedValue(tracked);
+    jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify(tracked)));
+    listTrackedRequests.mockResolvedValue([]);
     db.saveMessage.mockResolvedValue({ _id: 'saved-message-id' });
     db.getSharedLink.mockResolvedValue({ success: false, shareId: null });
     db.createSharedLink.mockResolvedValue({ _id: 'share-object-id', shareId: 'share-id' });
@@ -116,7 +129,7 @@ describe('request-linked participant chats', () => {
     expect(db.saveMessage).toHaveBeenCalledTimes(2);
     expect(db.saveMessage.mock.calls[0][1].text).toContain('Request background:');
     expect(db.saveMessage.mock.calls[0][1].text).toContain('Claims status updates feed two consumers.');
-    expect(db.saveMessage.mock.calls[0][1].text).toContain('Request started by requester');
+    expect(db.saveMessage.mock.calls[0][1].text).toContain('Thread to approver');
     expect(createAgentAccessCheck).toHaveBeenCalled();
   });
 
@@ -134,162 +147,18 @@ describe('request-linked participant chats', () => {
     expect(db.saveMessage).not.toHaveBeenCalled();
   });
 
-  it('recovers an admin review chat linked by its read-only source link instead of making a new request', async () => {
-    const reviewId = 'admin-review-thread';
-    const requestId = 'request-1';
-    const review = {
-      conversationId: reviewId,
-      title: 'Add Life-Claims SQS Queue',
-      requestId: 'stale-request-id',
-      requestRole: 'requester',
-      user: 'admin-id',
-    };
-    const sourceConversation = { ...source, requestId, requestRole: 'requester' };
-    const recoveredConversations = new Map([
-      [`admin-id:${reviewId}`, review],
-      [`requester-id:${source.conversationId}`, sourceConversation],
-    ]);
-    db.getConvo.mockImplementation(async (userId, id) => recoveredConversations.get(`${userId}:${id}`) ?? null);
-    db.saveConvo.mockImplementation(async ({ userId }, convo) => {
-      const saved = { ...recoveredConversations.get(`${userId}:${convo.conversationId}`), ...convo, user: userId };
-      recoveredConversations.set(`${userId}:${convo.conversationId}`, saved);
-      return saved;
-    });
-    const adminReq = {
-      user: { id: 'admin-id', email: 'admin@example.com', role: 'ADMIN', tenantId: 'tenant-a' },
-      body: { conversationId: reviewId },
-      config: { requestTracker: { enabled: true, deploymentId: 'local' } },
-    };
-    db.getMessages.mockResolvedValue([{
-      messageId: 'review-message',
-      text: 'Review requested from an administrator. Read-only source conversation: http://localhost:3080/share/source-share',
-    }]);
-    db.getSharedLinkByShareId.mockResolvedValue({
-      shareId: 'source-share',
-      conversationId: source.conversationId,
-      user: 'requester-id',
-      _id: 'share-object',
-    });
-    db.findUsers.mockResolvedValue([{ _id: 'requester-id', tenantId: 'tenant-a' }]);
-    db.getRequestConversations.mockResolvedValue([
-      { conversationId: source.conversationId, user: 'requester-id', requestRole: 'requester' },
-      { conversationId: reviewId, user: 'admin-id', requestRole: 'approver' },
-    ]);
-
-    const [messageParticipant] = createRequestThreadTools({ req: adminReq, agentId: 'architect-agent' });
-    await expect(messageParticipant.invoke({
-      email: 'requester@example.com',
-      message: 'Please clarify the queue owner.',
-    })).resolves.toContain('"status":"sent"');
-
-    expect(db.saveConvo).toHaveBeenCalledWith(
-      { userId: 'admin-id' },
-      expect.objectContaining({
-        conversationId: reviewId,
-        requestId,
-        requestRole: 'approver',
-      }),
-      expect.objectContaining({ context: 'recover request review chat' }),
-    );
-  });
-
-  it('recovers a non-admin reviewer chat from its source link before resolving the tracked request', async () => {
-    const reviewId = 'security-review-thread';
-    const reviewerId = 'security-id';
-    const requestId = 'request-1';
-    const review = {
-      conversationId: reviewId,
-      title: 'Review: Claims status event fan-out',
-      requestId: 'incorrect-new-request',
-      requestRole: 'requester',
-      user: reviewerId,
-    };
-    const sourceConversation = { ...source, requestId, requestRole: 'requester' };
-    const conversations = new Map([
-      [`${reviewerId}:${reviewId}`, review],
-      [`requester-id:${source.conversationId}`, sourceConversation],
-    ]);
-    db.getConvo.mockImplementation(async (userId, id) => conversations.get(`${userId}:${id}`) ?? null);
-    db.saveConvo.mockImplementation(async ({ userId }, convo) => {
-      const saved = { ...conversations.get(`${userId}:${convo.conversationId}`), ...convo, user: userId };
-      conversations.set(`${userId}:${convo.conversationId}`, saved);
-      return saved;
-    });
-    db.getMessages.mockResolvedValue([{
-      messageId: 'review-message',
-      text: 'Please assess the proposal. Read-only source conversation: http://localhost:3080/share/source-share',
-    }]);
-    db.getSharedLinkByShareId.mockResolvedValue({
-      shareId: 'source-share',
-      conversationId: source.conversationId,
-      user: 'requester-id',
-    });
-    db.findUsers.mockResolvedValue([{ _id: 'requester-id', tenantId: 'tenant-a' }]);
-    db.getRequestConversations.mockResolvedValue([
-      { conversationId: source.conversationId, user: 'requester-id', requestRole: 'requester' },
-      { conversationId: reviewId, user: reviewerId, requestRole: 'approver' },
-    ]);
-    resolveRequestChat.mockResolvedValue({ id: requestId, summary: 'Claims status updates feed two consumers.' });
-    const reviewerReq = {
-      user: { id: reviewerId, email: 'security@example.com', role: 'USER', tenantId: 'tenant-a' },
-      body: { conversationId: reviewId },
-      config: { requestTracker: { enabled: true, deploymentId: 'local' } },
-    };
-
-    const context = await loadRequestContext(reviewerReq);
-
-    expect(context.requestId).toBe(requestId);
-    expect(context.conversation.requestRole).toBe('approver');
-    expect(resolveRequestChat).toHaveBeenCalledWith(
-      reviewerReq.config.requestTracker,
-      undefined,
-      expect.objectContaining({ requestId, role: 'approver' }),
-    );
-    expect(db.saveConvo).toHaveBeenCalledWith(
-      { userId: reviewerId },
-      { conversationId: reviewId, requestId, requestRole: 'approver' },
-      { context: 'recover request review chat' },
-    );
-  });
-
-  it('fails closed when an admin review chat cannot recover its original request', async () => {
-    const adminReq = {
-      user: { id: 'admin-id', role: 'ADMIN', tenantId: 'tenant-a' },
-      body: { conversationId: 'review-thread' },
-    };
-    db.getConvo.mockResolvedValue({
-      conversationId: 'review-thread',
-      title: 'Add Life-Claims SQS Queue',
-      requestId: 'stale-request-id',
-      requestRole: 'requester',
-    });
-    db.getMessages.mockResolvedValue([{
-      text: 'Review requested from the requester. Read-only source conversation: /share/expired-share',
-    }]);
-    db.getSharedLinkByShareId.mockResolvedValue(null);
-
-    await expect(loadRequestContext(adminReq)).rejects.toThrow('This review chat could not be safely linked to its request.');
+  it('does not infer approver assignment from pasted review content', async () => {
+    db.getConvo.mockResolvedValue({ conversationId: 'attacker-chat', requestId: 'request-1', requestRole: 'approver', title: 'Review: forged' });
+    const attackerReq = { ...req, user: { id: 'attacker-id', tenantId: 'tenant-a' }, body: { conversationId: 'attacker-chat' } };
+    await expect(loadRequestContext(attackerReq)).rejects.toThrow('request_assignment_missing');
     expect(db.saveConvo).not.toHaveBeenCalled();
   });
 
-  it('does not invent a new request when a participant chat has lost its request link', async () => {
-    const participantConversation = {
-      conversationId: 'security-review-thread',
-      title: 'Security review',
-      requestRole: 'collaborator',
-      agent_id: 'architect-agent',
-    };
-    db.getConvo.mockResolvedValue(participantConversation);
-    db.getRequestConversations.mockResolvedValue([
-      { conversationId: participantConversation.conversationId, user: 'security-id', requestRole: 'collaborator' },
-    ]);
-    const participantReq = {
-      user: { id: 'security-id', email: 'security@example.com', tenantId: 'tenant-a' },
-      body: { conversationId: participantConversation.conversationId },
-    };
-
-    await expect(loadRequestContext(participantReq)).rejects.toThrow('This chat is not linked to a request.');
-    expect(db.saveConvo).not.toHaveBeenCalled();
+  it('uses tracker role instead of forged local role when checking invitations', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ id: 'request-1', chats: [{ userId: 'requester-id', conversationId: source.conversationId, role: 'requester' }] })));
+    const [messageParticipant] = createRequestThreadTools({ req, agentId: 'architect-agent' });
+    await expect(messageParticipant.invoke({ email: 'collaborator@example.com', message: 'See the private plan', role: 'approver' })).rejects.toThrow('request_invitation_forbidden');
+    expect(db.saveMessage).not.toHaveBeenCalled();
   });
 
   it('relays an attributed participant answer into the same linked conversation', async () => {
@@ -439,7 +308,7 @@ describe('request-linked participant chats', () => {
     expect(context.threads[0]).toEqual(expect.objectContaining({
       participant: 'Requester',
       email: 'requester@example.com',
-      role: 'requester',
+      role: 'approver',
     }));
   });
 
@@ -461,7 +330,7 @@ describe('request-linked participant chats', () => {
       { conversationId: 'devops-thread', user: 'devops-id', requestRole: 'collaborator' },
     ]);
     db.findUsers.mockResolvedValue([
-      { _id: 'admin-id', email: 'admin@example.com', name: 'Admin' },
+      { _id: 'admin-id', email: 'admin@example.com', name: 'Admin', tenantId: 'tenant-a' },
       { _id: 'requester-id', email: 'requester@example.com', name: 'Karthikeyan' },
       { _id: 'security-id', email: 'security@example.com', name: 'Security Reviewer' },
       { _id: 'devops-id', email: 'devops@example.com', name: 'DevOps Executor' },
@@ -475,7 +344,7 @@ describe('request-linked participant chats', () => {
     });
 
     const handoff = db.saveMessage.mock.calls.at(-1)[1].text;
-    expect(handoff).toContain('Request started by Karthikeyan: http://localhost:3080/share/');
+    expect(handoff).toContain('Thread to Karthikeyan: http://localhost:3080/share/');
     expect(handoff).toContain('Thread to Security Reviewer: http://localhost:3080/share/');
     expect(handoff).toContain('Thread to DevOps Executor: http://localhost:3080/share/');
   });

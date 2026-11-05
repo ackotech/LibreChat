@@ -80,6 +80,7 @@ export * from './projects';
 /* Conversations */
 export * from './conversations';
 export * from './requests/controlPlane';
+export * from './requests/security';
 /* Skills */
 export * from './schedules';
 export * from './schedules/service';

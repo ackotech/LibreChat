@@ -922,3 +922,15 @@ describe('OAuth coordination rollout configuration', () => {
     expect(user).not.toHaveProperty('oauthPersistenceWaitTimeout');
   });
 });
+
+
+describe('operator MCP tool allowlist', () => {
+  it('preserves operator tool restrictions in configured servers', () => {
+    const config = StreamableHTTPOptionsSchema.parse({ type: 'streamable-http', url: 'https://mcp.test/mcp', allowedTools: ['list_services'] });
+    expect(config.allowedTools).toEqual(['list_services']);
+  });
+  it('does not accept a tool policy from user-created server input', () => {
+    const config = MCPServerUserInputSchema.parse({ type: 'streamable-http', url: 'https://mcp.test/mcp', allowedTools: ['confirm_action'] });
+    expect(config).not.toHaveProperty('allowedTools');
+  });
+});

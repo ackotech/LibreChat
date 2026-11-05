@@ -20,6 +20,8 @@ export type TTrackedRequest = {
   chats: TRequestChat[];
   approvals?: Array<{
     approverId: string;
+    planRevision: number;
+    planHash: string;
     decision: 'approved' | 'rejected';
     conditions?: string[];
     validUntil?: string;
@@ -34,6 +36,8 @@ export type TTrackedRequest = {
   createdAt: string;
   updatedAt: string;
   revision: number;
+  planRevision: number;
+  planHash: string;
 };
 
 export type TTrackedChatTranscript = {

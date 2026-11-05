@@ -9,7 +9,7 @@ const { createHash } = require('node:crypto');
 const db = require('~/models');
 const { createShareContentPreflight, grantCreationPermissions } = require('@librechat/api');
 const { createAgentAccessCheck } = require('~/server/controllers/agents/steer');
-const { updateTrackedRequest } = require('@librechat/api');
+const { updateTrackedRequest, authorizeApprovalSubmission } = require('@librechat/api');
 const { syncTrackedChat, ensureRequestThreadShares } = require('./requestThreads');
 
 function stableUUID(value) {
@@ -40,6 +40,7 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
     schema,
     func: async ({ title, approverEmail, summary }) => {
       const requester = req?.user;
+      authorizeApprovalSubmission(isAdminApproval, requester?.role);
       if (!requester?.id || !requester?.role) {
         throw new Error('The signed-in user could not be verified.');
       }
