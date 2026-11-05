@@ -222,3 +222,5 @@ Required regression coverage for affected changes: forged request/reviewer metad
 ### Active knowledge backend
 
 Use Code Intelligence's Knowledge MCP with `codex/okf-knowledge-base`. The same knowledge repository's `feat/local-admin-approval-poc` branch is the legacy RAG format. Keep branches separate. Do not restore File Search instructions or re-enable it on the managed Architect as a substitute for OKF synchronization. Verify concept content against the intended Git commit using the OKF verifier.
+
+Password-backed LibreChat accounts are intentional for administrators and dedicated automation/sync identities in both local and production deployments. Preserve them; do not force these accounts through Thunder. Login method does not confer privileges: a sync identity receives only the managed-resource edit permissions it needs and must not become an infrastructure approver merely to perform synchronization. Do not reset, delete, promote, or migrate these accounts as part of agent or knowledge sync. Keep credentials outside Git and model context.
