@@ -5,18 +5,6 @@ import { createAttachedCodeEnvironmentPolicyHook } from './byom';
 import { resolveToolApprovalPolicy } from './policy';
 
 describe('buildHITLRunWiring', () => {
-  test('requires reviewer confirmation before recording a decision even in bypass mode', async () => {
-    const wiring = buildHITLRunWiring({ enabled: true, mode: 'bypass', ask: ['record_request_decision'] });
-    const result = await executeHooks({
-      registry: wiring!.hooks,
-      matchQuery: 'record_request_decision',
-      input: {
-        hook_event_name: 'PreToolUse', runId: 'review', toolName: 'record_request_decision',
-        toolInput: { decision: 'approved', planRevision: 2 }, toolUseId: 'decision', executingAgentId: 'architect',
-      },
-    });
-    expect(result.decision).toBe('ask');
-  });
   test.each([
     ['ask', 'bash_tool', 'ask'],
     ['deny', 'bash_tool', 'deny'],

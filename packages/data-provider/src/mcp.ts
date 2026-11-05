@@ -195,8 +195,6 @@ export const MCP_SERVER_TITLE_ERROR =
   'Title must start with a letter or number and can include spaces, hyphens, and apostrophes';
 
 const BaseOptionsSchema = z.object({
-  /** Operator-owned upstream tool names. Empty denies all; omitted preserves existing behavior. */
-  allowedTools: z.array(z.string().min(1)).optional(),
   /** Display name for the MCP server */
   title: z.string().regex(MCP_SERVER_TITLE_PATTERN, MCP_SERVER_TITLE_ERROR).optional(),
   /** Description of the MCP server */
@@ -492,7 +490,6 @@ export type MCPOptions = z.infer<typeof MCPOptionsSchema>;
  */
 const omitServerManagedFields = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
   schema.omit({
-    allowedTools: true,
     startup: true,
     timeout: true,
     sseReadTimeout: true,

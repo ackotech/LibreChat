@@ -782,17 +782,6 @@ describe('MCPManager', () => {
       );
     });
 
-    it('rejects a blocked tool before connecting regardless of which agent selected it', async () => {
-      const manager = new MCPManager();
-      const connect = jest.spyOn(manager, 'getConnection');
-      await expect(manager.callTool({
-        user: mockUser, serverName,
-        serverConfig: { ...serverConfig, allowedTools: ['list_services'] },
-        toolName: 'confirm_action', provider: 'openai', flowManager: mockFlowManager,
-      })).rejects.toThrow('mcp_tool_not_allowed');
-      expect(connect).not.toHaveBeenCalled();
-    });
-
     it('updates activity when a cached connection is replaced during an in-flight call', async () => {
       const manager = new MCPManager();
       const activeConnection = createConnection();

@@ -20,7 +20,6 @@ export default defineConfig({
   reporter: [['line']],
   webServer: servers.map((server) => ({
     ...server,
-    command: `node '${path.resolve(__dirname, 'setup/start-server.js').replaceAll("'", "'\\''")}'`,
     env: {
       ...server.env,
       CONFIG_PATH: path.resolve(__dirname, 'lighthouse/librechat.yaml'),
@@ -31,9 +30,9 @@ export default defineConfig({
       E2E_LATENCY_MONGO_DELAY_MS: '250',
       NODE_OPTIONS: [
         server.env.NODE_OPTIONS,
-        `--require=${JSON.stringify(latencyHook)}`,
+        `--require=${latencyHook}`,
         ...(process.env.LIGHTHOUSE_REGRESSION === 'serial-reads'
-          ? [`--require=${JSON.stringify(regressionHook)}`]
+          ? [`--require=${regressionHook}`]
           : []),
       ].join(' '),
     },

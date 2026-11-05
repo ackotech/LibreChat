@@ -48,7 +48,6 @@ import { withMCPRequestSignal } from './signal';
 import { formatToolContent } from './parsers';
 import { MCPConnection } from './connection';
 import { mcpConfig } from './mcpConfig';
-import { assertMCPEndpointToolAllowed } from './policy';
 
 function createOboToolCallErrorMessage(
   logPrefix: string,
@@ -1148,11 +1147,6 @@ Please follow these instructions when using tools from the respective MCP server
     onOAuthCredentialsChanged?: t.UserConnectionContext['onOAuthCredentialsChanged'];
     onOAuthCredentialsChanging?: t.UserConnectionContext['onOAuthCredentialsChanging'];
   }): Promise<t.FormattedToolResponse> {
-    const policyServers = await MCPServersRegistry.getInstance().getAllServerConfigs(
-      user?.id, undefined, user?.role,
-    );
-    const policyConfig = providedConfig ?? policyServers[serverName];
-    assertMCPEndpointToolAllowed(Object.values(policyServers), policyConfig, toolName);
     const userId = user?.id;
     const logPrefix = userId ? `[MCP][User: ${userId}][${serverName}]` : `[MCP][${serverName}]`;
     this.bindRequestScopedConnectionStore(requestScopedConnections);
