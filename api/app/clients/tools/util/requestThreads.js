@@ -6,6 +6,9 @@ const {
   createShareContentPreflight,
   grantCreationPermissions,
   resolveRequestChat,
+  createRequestContextLoader,
+  authorizeParticipantInvitation,
+  formatParticipantRelay,
 } = require('@librechat/api');
 const { createAgentAccessCheck } = require('~/server/controllers/agents/steer');
 const db = require('~/models');
@@ -18,73 +21,13 @@ function stableUUID(value) {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`;
 }
 
-async function loadRequestContext(req) {
-  const user = req?.user;
-  const conversationId = req?.body?.conversationId;
-  if (!user?.id || !conversationId) {
-    throw new Error('Could not identify the signed-in user and current request chat.');
-  }
-  const conversation = await db.getConvo(user.id, conversationId);
-  if (!conversation) {
-    throw new Error('Could not find the current chat for the signed-in user.');
-  }
-  const isAdmin = String(user.role).toUpperCase() === 'ADMIN';
-  const reviewTitle = /^Review:/i.test(conversation.title || '');
-  let initialMessages = [];
-  if (isAdmin || reviewTitle || conversation.requestRole === 'approver') {
-    initialMessages = await db.getMessages(
-      { user: user.id, conversationId },
-      'text',
-      { limit: 8, sort: { createdAt: 1 } },
-    );
-  }
-  const isReviewChat =
-    reviewTitle ||
-    (initialMessages || []).some((message) => {
-      const text = getMessageText(message.text);
-      return /Review requested from/i.test(text) && /\/share\/[A-Za-z0-9_-]+/.test(text);
-    });
-  if (isReviewChat) {
-    if (!conversation.requestId || conversation.requestRole !== 'approver') {
-      await recoverReviewContext({ user, conversation, conversationId, messages: initialMessages });
-    }
-    if (!conversation.requestId || conversation.requestRole !== 'approver') {
-      throw new Error('This review chat could not be safely linked to its request. No message was sent. Contact the platform administrator.');
-    }
-  }
-  const requestRole = conversation.requestRole || 'requester';
-  if (!conversation.requestId && requestRole !== 'requester') {
-    throw new Error('This chat is not linked to a request. Reopen it from the original request conversation.');
-  }
-  const tracked = await syncTrackedChat(req, {
-    requestId: conversation.requestId,
-    conversationId,
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    role: requestRole,
-    agentId: conversation.agent_id,
-    title: conversation.title,
-  });
-  const requestId = tracked.id;
-  if (!conversation.requestId || conversation.requestId !== requestId || !conversation.requestRole) {
-    await db.saveConvo(
-      { userId: user.id },
-      { conversationId, requestId, requestRole },
-      { context: 'initialize request workspace' },
-    );
-    conversation.requestId = requestId;
-    conversation.requestRole = requestRole;
-  }
-  const threads = await db.getRequestConversations({
-    requestId,
-    tenantId: user.tenantId,
-  });
-  if (!threads.some((thread) => thread.conversationId === conversationId && String(thread.user) === user.id)) {
-    throw new Error('You are not a participant in this request.');
-  }
-  return { user, conversation, requestId, threads, summary: tracked.summary || '' };
-}
+const loadRequestContext = createRequestContextLoader({
+  getConversation: db.getConvo,
+  saveLink: (userId, conversationId, requestId, requestRole) => db.saveConvo(
+    { userId }, { conversationId, requestId, requestRole }, { context: 'verify request assignment' },
+  ),
+  listThreads: db.getRequestConversations,
+});
 
 async function syncTrackedChat(req, chat) {
   const config = req?.config?.requestTracker;
@@ -105,34 +48,6 @@ async function syncTrackedChat(req, chat) {
   return tracked;
 }
 
-async function recoverReviewContext({ user, conversation, conversationId, messages = [] }) {
-  const shareIds = (messages || []).flatMap((message) =>
-    [...getMessageText(message.text).matchAll(/\/share\/([A-Za-z0-9_-]+)/g)].map((match) => match[1]),
-  );
-  for (const shareId of shareIds) {
-    const share = await db.getSharedLinkByShareId(shareId);
-    if (!share) continue;
-    const [owner] = await db.findUsers(
-      { _id: share.user, ...(user.tenantId ? { tenantId: user.tenantId } : {}) },
-      '_id tenantId',
-      { limit: 1 },
-    );
-    if (!owner || owner.tenantId !== user.tenantId) continue;
-    const source = await db.getConvo(share.user, share.conversationId);
-    if (!source?.requestId || source.requestRole !== 'requester') continue;
-    await db.saveConvo(
-      { userId: user.id },
-      { conversationId, requestId: source.requestId, requestRole: 'approver' },
-      { context: 'recover request review chat' },
-    );
-    const repaired = await db.getConvo(user.id, conversationId);
-    if (repaired?.requestId === source.requestId && repaired.requestRole === 'approver') {
-      conversation.requestId = source.requestId;
-      conversation.requestRole = 'approver';
-      return;
-    }
-  }
-}
 
 async function ensureRequestThreadShares({ req, threads, participantIds, requestId }) {
   const viewerRole = await db.findRoleByIdentifier(AccessRoleIds.SHARED_LINK_VIEWER);
@@ -296,11 +211,11 @@ async function relayRequestParticipantReply({ req, userId, userMessage, response
   const participant = req.user?.name || req.user?.email || userId;
   const participantText = getMessageText(userMessage.text).trim();
   const agentText = getMessageText(response?.text).trim();
-  const text = [
-    `Update from ${participant}:`,
-    participantText || '(No text answer provided.)',
-    ...(agentText ? ['', 'Agent follow-up:', agentText] : []),
-  ].join('\n');
+  const text = formatParticipantRelay({
+    participant, userId, conversationId: req.body.conversationId,
+    messageId: userMessage.messageId, requestId,
+    text: JSON.stringify({ participantText, agentFollowUp: agentText }),
+  });
   const previous = await db.getMessages(
     { user: recipientId, conversationId: recipientConversationId },
     'messageId',
@@ -317,6 +232,7 @@ async function relayRequestParticipantReply({ req, userId, userMessage, response
       isCreatedByUser: false,
       endpoint: recipientConversation.endpoint || 'agents',
       model: participantConversation.model || participantConversation.agent_id || 'request-thread',
+      metadata: { requestOrigin: { userId, conversationId: req.body.conversationId, messageId: userMessage.messageId, requestId, trust: 'participant-content' } },
       unfinished: false,
       error: false,
     },
@@ -371,6 +287,12 @@ function createRequestThreadTools({ req, agentId }) {
         throw new Error('The participant does not have access to this agent. Ask an agent administrator to grant access.');
       }
       const targetThread = request.threads.find((thread) => String(thread.user) === targetId);
+      authorizeParticipantInvitation({
+        actorRole: request.conversation.requestRole,
+        actorTenant: request.user.tenantId,
+        targetTenant: target.tenantId,
+        existing: Boolean(targetThread),
+      });
       const targetConversationId =
         targetThread?.conversationId || stableUUID(`request-thread:${request.requestId}:${targetId}`);
       let targetConversation = targetThread
@@ -505,7 +427,7 @@ function createRequestThreadTools({ req, agentId }) {
         request.threads.map(async (thread) => {
           const messages = await db.getMessages(
             { user: thread.user, conversationId: thread.conversationId, isCreatedByUser: { $in: [true, false] } },
-            'sender text createdAt isCreatedByUser',
+            'messageId sender text createdAt isCreatedByUser',
             { limit: 16, sort: { createdAt: -1 } },
           );
           const participant = usersById.get(thread.user);
@@ -516,6 +438,8 @@ function createRequestThreadTools({ req, agentId }) {
             conversationId: thread.conversationId,
             messages: messages.reverse().map((item) => ({
               sender: item.isCreatedByUser ? 'participant' : 'agent',
+              trust: 'conversation-content',
+              source: { userId: String(thread.user), conversationId: thread.conversationId, messageId: item.messageId },
               text: (item.text || '').slice(0, 2500),
               createdAt: item.createdAt,
             })),
@@ -526,6 +450,8 @@ function createRequestThreadTools({ req, agentId }) {
         query,
         requestId: request.requestId,
         summary: request.summary,
+        planRevision: request.planRevision,
+        planHash: request.planHash,
         threads: results,
       });
     },
@@ -540,7 +466,6 @@ module.exports = {
   syncTrackedChat,
   appendAssistantMessage,
   relayRequestParticipantReply,
-  recoverReviewContext,
   ensureRequestThreadShares,
   stableUUID,
 };

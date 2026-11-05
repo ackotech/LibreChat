@@ -17,11 +17,12 @@ function createRequestDecisionTool({ req }) {
       'Record an explicit approver decision for the current request. Use only after the approver clearly approves or rejects. Stores conditions and an optional expiry, then relays the decision to the original requester chat automatically. This does not provision infrastructure.',
     schema: z.object({
       decision: z.enum(['approved', 'rejected']),
+      planRevision: z.number().int().positive().describe('The planRevision from get_request_context for the plan discussed with the reviewer.'),
       conditions: z.array(z.string().trim().min(1).max(1000)).max(20).optional(),
       validUntil: z.string().datetime().optional(),
       note: z.string().trim().max(4000).optional(),
     }),
-    func: async ({ decision, conditions = [], validUntil, note }) => {
+    func: async ({ decision, planRevision, conditions = [], validUntil, note }) => {
       if (String(req?.user?.role).toUpperCase() !== 'ADMIN') {
         throw new Error('Only an assigned approver can record this decision.');
       }
@@ -45,7 +46,7 @@ function createRequestDecisionTool({ req }) {
         context.requestId,
         context.user.tenantId || 'default',
         context.user.id,
-        { status: decision, conditions, validUntil },
+        { status: decision, conditions, validUntil, expectedPlanRevision: planRevision },
       );
       const requesterChat = request.chats.find((chat) => chat.role === 'requester');
       if (!requesterChat) {

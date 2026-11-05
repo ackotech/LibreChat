@@ -128,6 +128,7 @@ export function updateTrackedRequest(
     status?: TrackedRequest['status'];
     conditions?: string[];
     validUntil?: string;
+    expectedPlanRevision?: number;
   },
 ): Promise<TrackedRequest> {
   const query = new URLSearchParams({ tenantId, userId, deploymentId: config.deploymentId });

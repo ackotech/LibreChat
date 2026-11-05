@@ -493,11 +493,12 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
       type: 'object',
       properties: {
         decision: { type: 'string', enum: ['approved', 'rejected'] },
+        planRevision: { type: 'integer', minimum: 1, description: 'The planRevision from get_request_context for the reviewed plan.' },
         conditions: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
         validUntil: { type: 'string', format: 'date-time' },
         note: { type: 'string', maxLength: 4000 },
       },
-      required: ['decision'],
+      required: ['decision', 'planRevision'],
       additionalProperties: false,
     } as ExtendedJsonSchema,
     toolType: 'builtin',
