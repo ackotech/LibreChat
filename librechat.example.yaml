@@ -1362,32 +1362,37 @@ endpoints:
 #     # timeRange: month        # 'day', 'month', or 'year'
 #     # timeout: 10000          # HTTP request timeout in milliseconds (1-120000, default: 10000)
 
-# Memory configuration for user memories
-# memory:
-#   # (optional) Disable memory functionality
-#   disabled: false
-#   # (optional) Restrict memory keys to specific values to limit memory storage and improve consistency
-#   validKeys: ["preferences", "work_info", "personal_info", "skills", "interests", "context"]
-#   # (optional) Maximum token limit for stored memory values
-#   tokenLimit: 10000
-#   # (optional) Maximum tokens from recent chat sent to the memory agent before truncation
-#   maxInputTokens: 12000
-#   # (optional) Enable personalization features (defaults to true if memory is configured)
-#   # When false, users will not see the Personalization tab in settings
-#   personalize: true
-#   # (optional) Memory agent configuration for automatic memory updates from chat messages.
-#   # If omitted, users can still create, edit, delete, and reference memories manually.
-#   agent:
-#     # Explicitly enables automatic memory updates from chat messages.
-#     enabled: true
-#     # Option 1: Use existing agent by ID
-#     id: "your-memory-agent-id"
-#     # Option 2: Define agent inline
-#     # provider: "openai"
-#     # model: "gpt-4o-mini"
-#     # instructions: "You are a memory management assistant. Store and manage user information accurately."
-#     # model_parameters:
-#     #   temperature: 0.1
+# User-specific memory. Each signed-in user has a private pool shared across their chats.
+# Automatic extraction is limited to stable personalization and excludes request-specific
+# and shared knowledge; remove `agent` to retain only user-managed memories.
+memory:
+  disabled: false
+  validKeys:
+    - response_preferences
+    - engineering_preferences
+    - expertise_context
+  tokenLimit: 1000
+  charLimit: 2000
+  maxInputTokens: 4000
+  personalize: true
+  messageWindowSize: 4
+  agent:
+    enabled: true
+    provider: openAI
+    model: gpt-4o-mini
+    instructions: |
+      Maintain only this signed-in user's durable personal preferences and context.
+      Save a preference only when the user explicitly asks you to remember it or it is
+      clearly repeated and stable. Do not infer a preference from a one-off task.
+      Use only these keys: response_preferences, engineering_preferences, expertise_context.
+      Keep each value brief and specific. Update or delete a stale preference when the
+      user corrects it or asks you to forget it.
+      Never store credentials, secrets, sensitive personal data, customer or claim data,
+      request or ticket identifiers, transient task details, infrastructure values, or
+      shared engineering knowledge that belongs in the OKF knowledge base.
+      Do not copy chat transcripts into memory. These memories belong only to the
+      signed-in user's personal memory pool and must never be treated as shared team
+      knowledge.
 
 # Apply opt-in content filters to source-classified submitted and reusable content.
 # `filters` is base-config-only: database overrides and tombstones cannot add,
