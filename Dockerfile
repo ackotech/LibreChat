@@ -1,7 +1,7 @@
 # v0.8.8
 
-# Base node image
-FROM node:24.16.0-alpine AS node
+# Shared Node base keeps build and runtime environments aligned.
+FROM node:24.16.0-alpine AS base
 
 RUN apk upgrade --no-cache
 RUN apk add --no-cache jemalloc
@@ -16,15 +16,16 @@ ENV SCARF_ANALYTICS=false
 COPY --from=ghcr.io/astral-sh/uv:0.9.5-python3.12-alpine /usr/local/bin/uv /usr/local/bin/uvx /bin/
 RUN uv --version
 
+RUN mkdir -p /app && chown node:node /app
+WORKDIR /app
+USER node
+
+FROM base AS build
+
 # Set configurable max-old-space-size with default
 ARG NODE_MAX_OLD_SPACE_SIZE=6144
 ARG NPM_CI_TIMEOUT_SECONDS=1500
 ARG NPM_CI_ATTEMPTS=2
-
-RUN mkdir -p /app && chown node:node /app
-WORKDIR /app
-
-USER node
 
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node api/package.json ./api/package.json
@@ -62,6 +63,25 @@ RUN \
     npm prune --production && \
     npm cache clean --force
 
+FROM base AS runtime
+
+WORKDIR /app
+COPY --from=build --chown=node:node /app /app
+
+# npm workspaces and node_modules/.bin intentionally use symlinks during the
+# build. Dereference them in the runtime filesystem so /app contains only
+# regular files and directories; fail the image build if any app link remains.
+USER root
+RUN cp -R -L -p /app /app.dereferenced && \
+    rm -rf /app && \
+    mv /app.dereferenced /app && \
+    chown -R node:node /app && \
+    remaining_symlinks="$(find /app -type l -print)" && \
+    if [ -n "$remaining_symlinks" ]; then \
+        printf '%s\n' 'Application symlinks remain after dereferencing:' "$remaining_symlinks" >&2; \
+        exit 1; \
+    fi
+
 # Optional build metadata surfaced in Settings -> About for support triage.
 # Declared here (after the heavy install/build steps) so that commit/date
 # changing on every CI run does not bust the cache for dependency install
@@ -77,11 +97,12 @@ ENV BUILD_DATE=${BUILD_DATE}
 # Node API setup
 EXPOSE 3080
 ENV HOST=0.0.0.0
+USER node
 CMD ["npm", "run", "backend"]
 
 # Optional: for client with nginx routing
 # FROM nginx:stable-alpine AS nginx-client
 # WORKDIR /usr/share/nginx/html
-# COPY --from=node /app/client/dist /usr/share/nginx/html
+# COPY --from=runtime /app/client/dist /usr/share/nginx/html
 # COPY client/nginx.conf /etc/nginx/conf.d/default.conf
 # ENTRYPOINT ["nginx", "-g", "daemon off;"]
