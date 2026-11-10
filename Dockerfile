@@ -71,9 +71,11 @@ COPY --from=build --chown=node:node /app /app
 # npm workspaces and node_modules/.bin intentionally use symlinks during the
 # build. Dereference them in the runtime filesystem so /app contains only
 # regular files and directories; fail the image build if any app link remains.
+USER root
 RUN cp -R -L -p /app /app.dereferenced && \
     rm -rf /app && \
     mv /app.dereferenced /app && \
+    chown -R node:node /app && \
     remaining_symlinks="$(find /app -type l -print)" && \
     if [ -n "$remaining_symlinks" ]; then \
         printf '%s\n' 'Application symlinks remain after dereferencing:' "$remaining_symlinks" >&2; \
@@ -95,6 +97,7 @@ ENV BUILD_DATE=${BUILD_DATE}
 # Node API setup
 EXPOSE 3080
 ENV HOST=0.0.0.0
+USER node
 CMD ["npm", "run", "backend"]
 
 # Optional: for client with nginx routing
