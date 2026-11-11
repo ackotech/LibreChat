@@ -68,19 +68,14 @@ FROM base AS runtime
 WORKDIR /app
 COPY --from=build --chown=node:node /app /app
 
-# npm workspaces and node_modules/.bin intentionally use symlinks during the
-# build. Dereference them in the runtime filesystem so /app contains only
-# regular files and directories; fail the image build if any app link remains.
+# npm workspaces and node_modules/.bin use symlinks during the build.
+# Replace them with regular files. .bin entries exec the package file so
+# require('..') still resolves after the copy. Fail if any app link remains.
 USER root
-RUN cp -R -L -p /app /app.dereferenced && \
-    rm -rf /app && \
-    mv /app.dereferenced /app && \
-    chown -R node:node /app && \
-    remaining_symlinks="$(find /app -type l -print)" && \
-    if [ -n "$remaining_symlinks" ]; then \
-        printf '%s\n' 'Application symlinks remain after dereferencing:' "$remaining_symlinks" >&2; \
-        exit 1; \
-    fi
+COPY --chown=root:root utils/docker/dereference-app.sh /tmp/dereference-app.sh
+RUN sh /tmp/dereference-app.sh /app && \
+    rm -f /tmp/dereference-app.sh && \
+    chown -R node:node /app
 
 # Optional build metadata surfaced in Settings -> About for support triage.
 # Declared here (after the heavy install/build steps) so that commit/date
