@@ -3149,8 +3149,6 @@ const requestTrackerConfigSchema = z
     ),
     /** Stable deployment key used to keep local, test, and production request IDs separate. */
     deploymentId: z.string().min(1).max(120).default('local'),
-    /** Knowledge determines whether an administrator needs a second review; disable to forbid that route. */
-    adminApprovalPolicy: z.enum(['knowledge_based', 'disabled']).default('knowledge_based'),
   })
   .superRefine((config, context) => {
     if (config.enabled && !config.baseUrl) {

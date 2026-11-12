@@ -457,7 +457,7 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
   request_admin_approval: {
     name: 'request_admin_approval',
     description:
-      'Submit a completed request for review. Links this conversation to a durable request, shares a private read-only source link with approvers, and creates one stable 1:1 review chat per approver. The approver is a request role, not a LibreChat system role. Does not execute infrastructure changes.',
+      'Create or update private, request-linked 1:1 handoff chats for the eligible administrators. The agent decides whether this handoff is appropriate. This tool handles request/chat linking and sharing only; it does not decide whether review is required, record a decision, or execute infrastructure changes.',
     schema: {
       type: 'object',
       properties: {
@@ -472,7 +472,7 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
   request_approval: {
     name: 'request_approval',
     description:
-      'Submit a confirmed change plan to the explicitly assigned approver for this request. The approver is not defined by their LibreChat administrator role. Reuses the approver’s 1:1 request chat and does not execute infrastructure changes.',
+      'Create or update a private, request-linked 1:1 handoff chat for the explicitly selected participant. The agent decides whether and whom to involve. This tool handles request/chat linking and sharing only; it does not decide whether review is required, record a decision, or execute infrastructure changes.',
     schema: {
       type: 'object',
       properties: {

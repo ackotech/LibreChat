@@ -59,7 +59,7 @@ describe('definitions.ts', () => {
     ]);
   });
 
-  it('routes admin approval by role without requiring an approver email', () => {
+  it('registers the thread-handoff helper for administrators without embedding the approval rule', () => {
     const definition = getToolDefinition('request_admin_approval');
 
     expect(definition).toEqual(
