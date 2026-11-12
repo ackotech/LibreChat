@@ -23,9 +23,6 @@ function createRequestDecisionTool({ req }) {
       note: z.string().trim().max(4000).optional(),
     }),
     func: async ({ decision, planRevision, conditions = [], validUntil, note }) => {
-      if (String(req?.user?.role).toUpperCase() !== 'ADMIN') {
-        throw new Error('Only an assigned approver can record this decision.');
-      }
       const context = await loadRequestContext(req);
       const currentChat = context.threads.find(
         (thread) => thread.conversationId === req.body.conversationId && String(thread.user) === context.user.id,

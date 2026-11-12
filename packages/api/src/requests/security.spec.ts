@@ -1,5 +1,4 @@
 import {
-  authorizeApprovalSubmission,
   authorizeParticipantInvitation,
   recoverReviewAssignment,
   formatParticipantRelay,
@@ -7,11 +6,6 @@ import {
 } from './security';
 
 describe('request authorization', () => {
-  it('prevents a requester using a different agent to choose their own reviewer', () => {
-    expect(() => authorizeApprovalSubmission(false, 'USER')).toThrow(
-      'request_approval_routing_forbidden',
-    );
-  });
   it('does not grant approver membership from a review title or a source share', () => {
     expect(() => recoverReviewAssignment([], 'user', 'chat')).toThrow('request_assignment_missing');
   });

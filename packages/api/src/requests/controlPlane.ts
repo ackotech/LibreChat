@@ -4,7 +4,6 @@ export interface RequestTrackerConfig {
   enabled: boolean;
   baseUrl?: string;
   deploymentId: string;
-  adminApprovalPolicy?: 'knowledge_based' | 'disabled';
 }
 
 export type TrackedChat = TRequestChat;

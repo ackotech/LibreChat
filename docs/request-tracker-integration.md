@@ -17,7 +17,6 @@ uses authenticated LibreChat API routes; the control-plane token stays between b
      enabled: true
      baseUrl: http://host.docker.internal:8080
      deploymentId: local
-     adminApprovalPolicy: knowledge_based
    ```
 
 4. Make sure the `Platform Architect Intake` agent includes `request_admin_approval`,
@@ -40,12 +39,12 @@ uses authenticated LibreChat API routes; the control-plane token stays between b
   fields, capped at the latest 200 messages per chat.
 - An explicit approver decision is stored with conditions and optional expiry, then relayed to the
   requester in the original chat. Approval does not provision infrastructure.
-- Non-admin change plans follow the configured administrator-review workflow. For administrators,
-  the Architect consults the applicable knowledge policy: normally no second review is required;
-  when a relevant topic explicitly requires it, `request_admin_approval` routes the request to a
-  different eligible administrator in the same tenant. The server trusts the authenticated role and
-  excludes the requester from the reviewer list. Set `adminApprovalPolicy: disabled` to disable this
-  route. “Approval not required” is not recorded as an approval decision.
+- The Architect applies approval policy from its instructions and the applicable knowledge topics.
+  LibreChat does not decide whether a request needs approval. When the agent invokes a handoff tool,
+  LibreChat links the source chat to the request, creates or reuses the recipient's 1:1 chat, and
+  grants the intended read-only share. It still verifies source-chat ownership, tenant boundaries,
+  recipient identity, and access to the agent. The request tracker validates assigned approvers and
+  records their decisions. “Approval not required” is not recorded as an approval decision.
 - A missing or unavailable tracker is shown as a generic internal service issue. The raw control
   plane error and token are never sent to the browser or shown as chat text.
 

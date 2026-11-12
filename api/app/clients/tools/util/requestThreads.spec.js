@@ -49,7 +49,7 @@ describe('request-linked participant chats', () => {
     model: 'gpt-test',
   };
   const req = {
-    user: { id: 'requester-id', email: 'requester@example.com', tenantId: 'tenant-a' },
+    user: { id: 'requester-id', email: 'requester@example.com', role: 'USER', tenantId: 'tenant-a' },
     body: { conversationId: source.conversationId },
     config: { requestTracker: { enabled: true, deploymentId: 'local' } },
   };
@@ -304,6 +304,7 @@ describe('request-linked participant chats', () => {
 
     const context = JSON.parse(await getRequestContext.invoke({ query: 'Who requested this and why?' }));
 
+    expect(context.authenticatedUser).toEqual({ role: 'USER' });
     expect(context.summary).toBe('Claims status updates feed two consumers.');
     expect(context.threads[0]).toEqual(expect.objectContaining({
       participant: 'Requester',

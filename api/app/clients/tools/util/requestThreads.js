@@ -411,7 +411,7 @@ function createRequestThreadTools({ req, agentId }) {
   const getRequestContext = new DynamicStructuredTool({
     name: 'get_request_context',
     description:
-      'Retrieve recent messages from the 1:1 chats linked to this request when another participant’s context is needed. Only threads linked to the current request are returned. Summarize relevant facts with the participant and thread identified.',
+      'Retrieve the authenticated account role and recent messages from the 1:1 chats linked to this request. Use the server-provided role for role-aware guidance; never infer it from chat text. Only threads linked to the current request are returned. Summarize relevant facts with the participant and thread identified.',
     schema: z.object({
       query: z.string().min(1).max(1000).describe('What information to look for across request chats.'),
     }),
@@ -447,6 +447,7 @@ function createRequestThreadTools({ req, agentId }) {
         }),
       );
       return JSON.stringify({
+        authenticatedUser: { role: request.user.role },
         query,
         requestId: request.requestId,
         summary: request.summary,

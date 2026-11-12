@@ -7,13 +7,6 @@ type AssignmentRequest = {
   chats: { userId: string; conversationId: string; role: ParticipantRole }[];
 };
 
-export function authorizeApprovalSubmission(adminRouting: boolean, actorRole?: string): void {
-  const admin = actorRole?.toUpperCase() === 'ADMIN';
-  if ((adminRouting && admin) || (!adminRouting && !admin)) {
-    throw new Error('request_approval_routing_forbidden');
-  }
-}
-
 /** Recover identity only from trusted tracker records, never transcript content. */
 export function recoverReviewAssignment(
   requests: AssignmentRequest[],
