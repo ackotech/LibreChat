@@ -26,16 +26,9 @@
  * the tool call and a matching tool result, which is the adjacency providers
  * require.
  *
- * Replay is the only continuation this endpoint supports for a tool exchange.
- * `previous_response_id` does not carry one: the server persists a turn as
- * text (`saveResponseOutput` keeps `output_text`, `saveInputMessages` keeps
- * `role: 'user'`), so neither item survives, and the id is rejected outright
- * with 404 unless the first request also asked for `store: true`. Sending
- * `previous_response_id` with a bare `function_call_output` therefore produces
- * a tool result whose call is missing.
- *
- * This is the stateless shape OpenAI defines: no run is suspended, nothing is
- * checkpointed, and no per-caller state is held between the two requests.
+ * Caller-executed tools still require both items in the current request. A stored
+ * native transcript does not substitute for that request's pair validation.
+ * This handoff does not suspend or checkpoint a running graph between requests.
  *
  * The handoff needs the client call to be the turn's only call, so each tool's
  * description asks the model for that shape, and a batch that mixes one with a

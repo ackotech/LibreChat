@@ -1226,3 +1226,35 @@ describe('reported tools and tool_choice', () => {
     ).toEqual({ valid: false, error: expect.stringContaining('tools[0] must be an object') });
   });
 });
+
+describe('stored streaming snapshot', () => {
+  it('settles final text before persistence without acknowledging response completion', () => {
+    const chunks: string[] = [];
+    const res = { write: (chunk: string) => chunks.push(chunk) };
+    const context: ResponseContext = {
+      responseId: 'resp_persist',
+      model: 'agent_test',
+      createdAt: 0,
+      store: true,
+      conversationId: 'native-chat',
+    };
+    const tracker = createResponseTracker();
+    const stream = createResponsesEventHandlers({ res: res as never, context, tracker });
+    stream.handlers.on_message_delta.handle('on_message_delta', {
+      delta: { content: [{ type: 'text', text: 'Saved streaming text' }] },
+    });
+    stream.prepareStream();
+    const response = buildResponse(context, tracker, 'completed');
+    expect(response.output).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'message',
+          content: [expect.objectContaining({ text: 'Saved streaming text' })],
+        }),
+      ]),
+    );
+    expect(chunks.join('')).not.toContain('response.completed');
+    stream.finalizeStream();
+    expect(chunks.join('')).toContain('response.completed');
+  });
+});

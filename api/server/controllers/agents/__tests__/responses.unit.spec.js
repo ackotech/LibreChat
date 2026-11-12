@@ -197,6 +197,15 @@ jest.mock('@librechat/agents', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  createResponsePersistence: (...args) =>
+    jest.requireActual('@librechat/api').createResponsePersistence(...args),
+  admitResponseConversation: (...args) =>
+    jest.requireActual('@librechat/api').admitResponseConversation(...args),
+  responseHistory: (...args) => jest.requireActual('@librechat/api').responseHistory(...args),
+  persistResponseTurn: (...args) =>
+    jest.requireActual('@librechat/api').persistResponseTurn(...args),
+  sendResponsePersistenceError: (...args) =>
+    jest.requireActual('@librechat/api').sendResponsePersistenceError(...args),
   getAgentErrorMetadata: (...args) =>
     jest.requireActual('@librechat/api').getAgentErrorMetadata(...args),
   /* Provisioning moved into this package; the controllers build the callback from it. */
@@ -331,7 +340,7 @@ jest.mock('@librechat/api', () => ({
   resolveRecursionLimit: jest.fn().mockReturnValue(50),
   // Responses API
   writeDone: jest.fn(),
-  buildResponse: jest.fn().mockReturnValue({ id: 'resp_123', output: [] }),
+  buildResponse: jest.fn((...args) => jest.requireActual('@librechat/api').buildResponse(...args)),
   generateResponseId: jest.fn().mockReturnValue('resp_mock-123'),
   isValidationFailure: jest.fn().mockReturnValue(false),
   inspectContent: mockInspectContent,
@@ -372,8 +381,11 @@ jest.mock('@librechat/api', () => ({
     field: 'content',
   }),
   emitResponseCreated: jest.fn(),
-  createResponseContext: jest.fn().mockReturnValue({ responseId: 'resp_123' }),
+  createResponseContext: jest.fn((request, responseId) =>
+    jest.requireActual('@librechat/api').createResponseContext(request, responseId),
+  ),
   createResponseTracker: jest.fn().mockReturnValue({
+    items: [],
     usage: { inputTokens: 100, outputTokens: 50, reasoningTokens: 0, cachedTokens: 0 },
   }),
   setupStreamingResponse: jest.fn(),
@@ -383,7 +395,8 @@ jest.mock('@librechat/api', () => ({
     request: { model: 'agent-123', input: 'Hello', stream: false },
   }),
   buildAggregatedResponse: jest.fn().mockReturnValue({
-    id: 'resp_123',
+    id: 'resp_mock-123',
+    model: 'agent-123',
     status: 'completed',
     output: [],
     usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
@@ -401,6 +414,7 @@ jest.mock('@librechat/api', () => ({
       on_run_step_delta: { handle: jest.fn() },
       on_chat_model_end: { handle: jest.fn() },
     },
+    prepareStream: jest.fn(),
     finalizeStream: jest.fn(),
   }),
   createAggregatorEventHandlers: jest.fn().mockReturnValue({
@@ -543,7 +557,8 @@ jest.mock('~/models', () => ({
   getFiles: jest.fn(),
   getUserKey: jest.fn(),
   getMessages: jest.fn().mockResolvedValue([]),
-  saveMessage: jest.fn().mockResolvedValue({}),
+  getMessage: jest.fn().mockResolvedValue(null),
+  saveMessage: jest.fn(async (_ctx, fields) => ({ ...fields, _id: '000000000000000000000001' })),
   updateFilesUsage: jest.fn(),
   getUserKeyValues: jest.fn(),
   getUserCodeFiles: jest.fn(),
@@ -557,7 +572,7 @@ jest.mock('~/models', () => ({
   getCacheMultiplier: mockGetCacheMultiplier,
   getConvoFiles: jest.fn().mockResolvedValue([]),
   getFormattedMemories: jest.fn().mockResolvedValue({ withKeys: '', withoutKeys: '' }),
-  saveConvo: jest.fn().mockResolvedValue({}),
+  saveConvo: jest.fn(async (_ctx, fields) => fields),
   getConvo: jest.fn().mockResolvedValue(null),
   readAdmittedConvoCodeEnvironmentDecision: jest.fn().mockResolvedValue(null),
   isSubagentOwnerAdmissible: jest.fn().mockResolvedValue(true),
@@ -801,7 +816,7 @@ describe('createResponse controller', () => {
     );
 
     const request = createResponse(req, res);
-    await Promise.resolve();
+    while (res.once.mock.calls.length === 0) await Promise.resolve();
     res.once.mock.calls[0][1]();
     finishEnrollment(mockExecution);
     await request;
@@ -1036,7 +1051,7 @@ describe('createResponse controller', () => {
 
     expect(api.getLangfuseTraceMessageFields).toHaveBeenCalledWith(req.config, 'resp_mock-123');
     expect(saveMessage).toHaveBeenCalledWith(
-      req,
+      expect.objectContaining({ userId: req.user.id }),
       expect.objectContaining({
         messageId: 'resp_mock-123',
         isCreatedByUser: false,
@@ -1047,6 +1062,34 @@ describe('createResponse controller', () => {
       { context: 'Responses API - save assistant response' },
     );
   });
+
+  it.each([false, true])(
+    'does not acknowledge completion if conversation storage fails (stream=%s)',
+    async (stream) => {
+      const api = require('@librechat/api');
+      const db = require('~/models');
+      api.validateResponseRequest.mockReturnValueOnce({
+        request: { ...req.body, store: true, stream },
+      });
+      db.saveConvo.mockRejectedValueOnce(new Error('private database diagnostic'));
+      res.headersSent = stream;
+      await createResponse(req, res);
+      if (stream) {
+        expect(api.createResponsesEventHandlers().finalizeStream).not.toHaveBeenCalled();
+        const events = res.write.mock.calls.flat().join('');
+        expect(events).toContain('response.failed');
+        expect(events).not.toContain('private database diagnostic');
+      } else {
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            error: expect.objectContaining({ code: 'response_persistence_failed' }),
+          }),
+        );
+      }
+      delete res.headersSent;
+    },
+  );
 
   describe('execution envelope', () => {
     it('creates the portable run input before agent initialization', async () => {
@@ -2048,7 +2091,7 @@ describe('createResponse controller', () => {
     });
 
     it('should return 400 when previous_response_id is not a string', async () => {
-      const { validateResponseRequest, sendResponsesErrorResponse } = require('@librechat/api');
+      const { validateResponseRequest } = require('@librechat/api');
       validateResponseRequest.mockReturnValueOnce({
         request: {
           model: 'agent-123',
@@ -2059,16 +2102,16 @@ describe('createResponse controller', () => {
       });
 
       await createResponse(req, res);
-      expect(sendResponsesErrorResponse).toHaveBeenCalledWith(
-        res,
-        400,
-        'previous_response_id must be a string',
-        'invalid_request',
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'invalid_conversation_reference' }),
+        }),
       );
     });
 
     it('should return 404 when conversation is not owned by user', async () => {
-      const { validateResponseRequest, sendResponsesErrorResponse } = require('@librechat/api');
+      const { validateResponseRequest } = require('@librechat/api');
       const { getConvo } = require('~/models');
       validateResponseRequest.mockReturnValueOnce({
         request: {
@@ -2082,11 +2125,11 @@ describe('createResponse controller', () => {
 
       await createResponse(req, res);
       expect(getConvo).toHaveBeenCalledWith('user-123', 'resp_abc');
-      expect(sendResponsesErrorResponse).toHaveBeenCalledWith(
-        res,
-        404,
-        'Conversation not found',
-        'not_found',
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'conversation_not_found' }),
+        }),
       );
     });
 
@@ -2114,11 +2157,7 @@ describe('createResponse controller', () => {
     });
 
     it('rejects a remote response continuation of a view-only subagent thread', async () => {
-      const {
-        validateResponseRequest,
-        sendResponsesErrorResponse,
-        CHILD_THREAD_READ_ONLY_ERROR,
-      } = require('@librechat/api');
+      const { validateResponseRequest } = require('@librechat/api');
       const { getConvo, saveConvo, saveMessage } = require('~/models');
       validateResponseRequest.mockReturnValueOnce({
         request: {
@@ -2137,19 +2176,18 @@ describe('createResponse controller', () => {
 
       await createResponse(req, res);
 
-      expect(sendResponsesErrorResponse).toHaveBeenCalledWith(
-        res,
-        409,
-        CHILD_THREAD_READ_ONLY_ERROR,
-        'invalid_request',
-        'conversation_read_only',
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'conversation_read_only' }),
+        }),
       );
       expect(saveConvo).not.toHaveBeenCalled();
       expect(saveMessage).not.toHaveBeenCalled();
     });
 
     it('should return 500 when getConvo throws a DB error', async () => {
-      const { validateResponseRequest, sendResponsesErrorResponse } = require('@librechat/api');
+      const { validateResponseRequest } = require('@librechat/api');
       const { getConvo } = require('~/models');
       validateResponseRequest.mockReturnValueOnce({
         request: {
@@ -2162,11 +2200,11 @@ describe('createResponse controller', () => {
       getConvo.mockRejectedValueOnce(new Error('DB connection failed'));
 
       await createResponse(req, res);
-      expect(sendResponsesErrorResponse).toHaveBeenCalledWith(
-        res,
-        500,
-        expect.any(String),
-        expect.any(String),
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'conversation_load_failed' }),
+        }),
       );
     });
   });

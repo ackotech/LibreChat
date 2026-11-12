@@ -185,3 +185,11 @@ export {
 
 // Client-side tool execution
 export { createClientToolHandoff, type ClientToolHandoff } from './clientTools';
+
+export {
+  createResponsePersistence,
+  admitResponseConversation,
+  responseHistory,
+  sendResponsePersistenceError,
+  persistResponseTurn,
+} from './persistence';

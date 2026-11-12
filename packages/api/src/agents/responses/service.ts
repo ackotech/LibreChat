@@ -143,6 +143,12 @@ export function validateResponseRequest(body: unknown): RequestValidationResult 
     return { valid: false, error: 'previous_response_id must be a string' };
   }
 
+  for (const field of ['conversation_id', 'parent_message_id']) {
+    if (request[field] !== undefined && !isNonEmptyString(request[field])) {
+      return { valid: false, error: `${field} must be a non-empty string` };
+    }
+  }
+
   const clientToolsError = validateClientTools(request.tools);
   if (clientToolsError !== undefined) {
     return { valid: false, error: clientToolsError };
@@ -168,8 +174,8 @@ function isNonEmptyString(value: unknown): value is string {
 /**
  * Validates the replayed tool exchanges in `input`.
  *
- * A turn is persisted as text, so `previous_response_id` does not carry a tool
- * exchange: replaying the `function_call` together with its
+ * Continuation admission validates caller-executed tool exchanges in the current
+ * input: replaying the `function_call` together with its
  * `function_call_output` is the only supported continuation. For a tool the
  * caller executes, both halves are therefore required, and an unpaired half is
  * the caller's error rather than something to hand to the provider — an
@@ -498,6 +504,8 @@ export function createResponseContext(
     model: request.model,
     createdAt: Math.floor(Date.now() / 1000),
     previousResponseId: request.previous_response_id,
+    conversationId: request.conversation_id,
+    store: request.store === true,
     instructions: request.instructions,
   };
 }
@@ -624,6 +632,7 @@ function createToolCallChunkResolver(): ToolCallChunkResolver {
 export function createResponsesEventHandlers(config: StreamHandlerConfig): {
   handlers: Record<string, { handle: (event: string, data: unknown) => void }>;
   state: StreamState;
+  prepareStream: () => void;
   finalizeStream: (usage?: Usage) => void;
   emitClientToolDeferral: (callId: string, output: string) => void;
 } {
@@ -953,9 +962,9 @@ export function createResponsesEventHandlers(config: StreamHandlerConfig): {
   };
 
   /**
-   * Finalize the stream - close open items and emit completed
+   * Close output items so persistence sees final text before terminal completion.
    */
-  const finalizeStream = (usage?: Usage): void => {
+  const prepareStream = (): void => {
     closeOpenStreams();
     for (const [callId, output] of pendingClientToolDeferrals ?? []) {
       deliverClientToolDeferral(callId, output);
@@ -963,11 +972,15 @@ export function createResponsesEventHandlers(config: StreamHandlerConfig): {
     // A later step can announce a sibling before its arguments or deferral
     // are settled. Only terminate handoffs after the run has completed.
     closeOpenClientToolCalls();
+  };
+
+  const finalizeStream = (usage?: Usage): void => {
+    prepareStream();
     emitResponseCompleted(config, usage);
     writeDone(config.res);
   };
 
-  return { handlers, state, finalizeStream, emitClientToolDeferral };
+  return { handlers, state, prepareStream, finalizeStream, emitClientToolDeferral };
 }
 
 /* =============================================================================
@@ -1096,6 +1109,7 @@ export function buildAggregatedResponse(
     incomplete_details: null,
     model: context.model,
     previous_response_id: context.previousResponseId ?? null,
+    ...(context.conversationId && { conversation_id: context.conversationId }),
     instructions: context.instructions ?? null,
     output,
     error: null,
@@ -1121,7 +1135,7 @@ export function buildAggregatedResponse(
     },
     max_output_tokens: null,
     max_tool_calls: null,
-    store: false,
+    store: context.store === true,
     background: false,
     service_tier: 'default',
     metadata: {},

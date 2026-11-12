@@ -338,6 +338,9 @@ export interface ResponseRequest {
 
   /** Previous response ID for conversation continuation */
   previous_response_id?: string;
+  /** Native LibreChat conversation and branch to continue (LibreChat extensions). */
+  conversation_id?: string;
+  parent_message_id?: string;
 
   /** Tools available to the model */
   tools?: Tool[];
@@ -476,6 +479,8 @@ export interface Response {
 
   /** Previous response ID - null if not a continuation */
   previous_response_id: string | null;
+  /** Native conversation URL is /c/{conversation_id}. Only durable when store is true. */
+  conversation_id?: string;
 
   /** Instructions used - null if none */
   instructions: string | null;
@@ -773,6 +778,8 @@ export type ResponseEvent =
 
 /** Context for building responses */
 export interface ResponseContext {
+  conversationId?: string;
+  store?: boolean;
   /** Response ID */
   responseId: string;
   /** Model/agent ID */
