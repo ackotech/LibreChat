@@ -32,7 +32,20 @@ describe('request tracker config', () => {
     expect(configSchema.parse({ version: '1.0' }).requestTracker).toEqual({
       enabled: false,
       deploymentId: 'local',
+      adminApprovalPolicy: 'knowledge_based',
     });
+  });
+
+  it('accepts disabling second-administrator routing explicitly', () => {
+    const result = configSchema.safeParse({
+      version: '1.0',
+      requestTracker: { enabled: false, adminApprovalPolicy: 'disabled' },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.requestTracker.adminApprovalPolicy).toBe('disabled');
+    }
   });
 
   it('requires a base URL before enabling request tracking', () => {

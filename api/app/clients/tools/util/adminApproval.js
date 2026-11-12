@@ -22,8 +22,13 @@ function stableUUID(value) {
 
 function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
   const isAdminApproval = toolName === 'request_admin_approval';
+  const isAdminRequester = String(req?.user?.role).toUpperCase() === 'ADMIN';
+  const adminApprovalPolicy = req?.config?.requestTracker?.adminApprovalPolicy || 'knowledge_based';
   const schema = z.object({
     title: z.string().min(1).max(120).describe('Short title for the review request.'),
+    ...(isAdminRequester && isAdminApproval && adminApprovalPolicy !== 'disabled' && {
+      policyBasis: z.string().trim().min(1).max(500).describe('The ID or title of the applicable knowledge or organizational policy that explicitly requires a second administrator review.'),
+    }),
     ...(!isAdminApproval && {
       approverEmail: z.string().email().describe('Email of the person assigned to approve this request.'),
     }),
@@ -36,13 +41,27 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
   return new DynamicStructuredTool({
     name: toolName,
     description:
-      'Submit a completed change plan from a non-admin requester to eligible LibreChat administrators for approval. Creates a private read-only source link and reuses one 1:1 review chat per administrator for this request. Use automatically after the requester confirms the plan; do not ask for an approver email. Does not execute infrastructure changes.',
+      'Submit a completed change plan for review when required. Non-admin requests go to eligible LibreChat administrators. An administrator normally needs no second review; call this only when an applicable knowledge or organizational rule explicitly requires it, and provide that rule as policyBasis. The server routes it to a different eligible administrator. Creates a private read-only source link and reuses one 1:1 review chat per reviewer. Does not execute infrastructure changes.',
     schema,
-    func: async ({ title, approverEmail, summary }) => {
+    func: async ({ title, approverEmail, summary, policyBasis }) => {
       const requester = req?.user;
-      authorizeApprovalSubmission(isAdminApproval, requester?.role);
       if (!requester?.id || !requester?.role) {
         throw new Error('The signed-in user could not be verified.');
+      }
+      const isAdmin = String(requester.role).toUpperCase() === 'ADMIN';
+      if (!isAdminApproval) {
+        if (isAdmin) {
+          throw new Error(
+            'Administrators do not need a second review by default. Use request_admin_approval only when an applicable policy explicitly requires it.',
+          );
+        }
+        authorizeApprovalSubmission(false, requester.role);
+      }
+      if (isAdminApproval && isAdmin && adminApprovalPolicy === 'disabled') {
+        return JSON.stringify({
+          status: 'not_required',
+          message: 'This deployment disables second-administrator review. No approval was created.',
+        });
       }
       const conversationId = req?.body?.conversationId;
       if (typeof conversationId !== 'string' || !conversationId) {
@@ -73,9 +92,6 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
         throw new Error('The original request chat could not be linked for review.');
       }
 
-      if (isAdminApproval && String(requester.role).toUpperCase() === 'ADMIN') {
-        throw new Error('An administrator cannot submit their own request for admin approval.');
-      }
       let approvers;
       if (isAdminApproval) {
         approvers = await db.findUsers(
@@ -183,6 +199,7 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
           `Review requested from ${approver.name || approver.email || approverId} by ${requester.name || requester.email || requester.id}.`,
           '',
           `Request: ${title.trim()}`,
+          ...(isAdminApproval && isAdmin ? ['', `Second-review policy basis: ${policyBasis.trim()}`] : []),
           '',
           summary.trim(),
           '',

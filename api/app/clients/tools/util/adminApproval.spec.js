@@ -44,6 +44,8 @@ describe('request_admin_approval tool', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    req.user.role = 'USER';
+    delete req.config.requestTracker.adminApprovalPolicy;
     resolveRequestChat.mockResolvedValue({ id: 'request-test' });
     updateTrackedRequest.mockResolvedValue({ id: 'request-test' });
     const conversations = new Map();
@@ -130,6 +132,57 @@ describe('request_admin_approval tool', () => {
       { context: 'request approval handoff' },
     );
     expect(result.reviewLinks).toHaveLength(1);
+  });
+
+  it('does not create an approval request for an admin when second-admin review is disabled', async () => {
+    req.user.role = 'ADMIN';
+    req.config.requestTracker.adminApprovalPolicy = 'disabled';
+    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_admin_approval' });
+
+    const result = JSON.parse(await tool.invoke({ title: 'Change request', summary: 'Agreed plan.' }));
+
+    expect(result.status).toBe('not_required');
+    expect(db.findUsers).not.toHaveBeenCalled();
+    expect(db.createSharedLink).not.toHaveBeenCalled();
+    expect(updateTrackedRequest).not.toHaveBeenCalled();
+  });
+
+  it('does not let an admin use generic approval routing without an explicit policy basis', async () => {
+    req.user.role = 'ADMIN';
+    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_approval' });
+
+    await expect(tool.invoke({
+      title: 'Change request',
+      approverEmail: 'second-admin@example.com',
+      summary: 'Agreed plan.',
+    })).rejects.toThrow('Administrators do not need a second review by default');
+    expect(db.findUsers).not.toHaveBeenCalled();
+    expect(db.createSharedLink).not.toHaveBeenCalled();
+  });
+
+  it('routes an admin request to a different admin only with a policy basis', async () => {
+    req.user.role = 'ADMIN';
+    req.config.requestTracker.adminApprovalPolicy = 'knowledge_based';
+    db.findUsers.mockResolvedValue([
+      { _id: req.user.id, email: req.user.email, name: req.user.name, role: 'ADMIN' },
+      { _id: '64b000000000000000000002', email: 'second-admin@example.com', name: 'Second Admin', role: 'ADMIN' },
+    ]);
+    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_admin_approval' });
+
+    await expect(tool.invoke({ title: 'Change request', summary: 'Agreed plan.' })).rejects.toThrow('policyBasis');
+    const result = JSON.parse(await tool.invoke({
+      title: 'Change request',
+      summary: 'Agreed plan.',
+      policyBasis: 'platform.approval-routing: explicit high-risk exception',
+    }));
+
+    expect(result.status).toBe('submitted');
+    expect(result.approvers).toEqual(['second-admin@example.com']);
+    expect(db.saveMessage).toHaveBeenCalledWith(
+      { userId: '64b000000000000000000002' },
+      expect.objectContaining({ text: expect.stringContaining('Second-review policy basis: platform.approval-routing: explicit high-risk exception') }),
+      { context: 'request approval handoff' },
+    );
   });
 
   it('rejects a conversation that is not owned by the requester', async () => {
