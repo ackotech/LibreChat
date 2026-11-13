@@ -19,7 +19,7 @@ uses authenticated LibreChat API routes; the control-plane token stays between b
      deploymentId: local
    ```
 
-4. Make sure the `Platform Architect Intake` agent includes `request_approval` with the knowledge-selected reviewer role,
+4. Make sure the `Platform Architect Intake` agent includes `route_request_to_role` with the knowledge-selected recipient role and `participantRole`,
    `record_request_decision`, `message_request_participant`, and `get_request_context`. Sync the agent
    definition using the existing `npm run sync:agent:platform-architect` script.
 5. Restart the LibreChat API and Go service after setting the config and environment.

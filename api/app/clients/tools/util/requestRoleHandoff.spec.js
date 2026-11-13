@@ -1,5 +1,5 @@
 const db = require('../../../../models');
-const { createApprovalTool } = require('./requestApproval');
+const { createRoleHandoffTool } = require('./requestRoleHandoff');
 
 jest.mock('../../../../models', () => ({
   getConvo: jest.fn(),
@@ -31,7 +31,7 @@ jest.mock('@librechat/api', () => ({
 
 const { resolveRequestChat, updateTrackedRequest } = require('@librechat/api');
 
-describe('request_approval role handoff tool', () => {
+describe('route_request_to_role handoff tool', () => {
   const req = {
     user: {
       id: '64b000000000000000000001',
@@ -84,19 +84,22 @@ describe('request_approval role handoff tool', () => {
   });
 
   it('resolves the policy role against the authenticated tenant directory', async () => {
-    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
+    const tool = createRoleHandoffTool({ req, agentId: 'architect-agent' });
     expect(tool.schema.shape).toHaveProperty('recipientRole');
+    expect(tool.schema.shape).toHaveProperty('participantRole');
     expect(tool.schema.shape).not.toHaveProperty('approverEmail');
 
     const result = JSON.parse(await tool.invoke({
       title: 'Claim status event delivery',
       recipientRole: 'ADMIN',
+      participantRole: 'approver',
       summary: 'Use an outbox and SQS FIFO; no infrastructure change has been made.',
     }));
 
     expect(result.status).toBe('submitted');
     expect(result.recipientRole).toBe('ADMIN');
-    expect(result.approvers).toEqual(['approver@example.com']);
+    expect(result.participantRole).toBe('approver');
+    expect(result.recipients).toEqual(['approver@example.com']);
     expect(result.sourceLink).toBe('http://localhost:3080/share/private-share-id');
     expect(db.findUsers).toHaveBeenNthCalledWith(
       1,
@@ -125,7 +128,7 @@ describe('request_approval role handoff tool', () => {
         sender: 'assistant',
         text: expect.stringContaining(`Request thread with Developer (requester): ${result.sourceLink}`),
       }),
-      { context: 'request approval handoff' },
+      { context: 'request role handoff' },
     );
     expect(db.saveConvo).toHaveBeenCalledWith(
       { userId: '64b000000000000000000002' },
@@ -135,9 +138,9 @@ describe('request_approval role handoff tool', () => {
         requestId: expect.any(String),
         requestRole: 'approver',
       }),
-      { context: 'request approval handoff' },
+      { context: 'request role handoff' },
     );
-    expect(result.reviewLinks).toHaveLength(1);
+    expect(result.participantLinks).toHaveLength(1);
   });
 
   it('resolves a named domain group and routes to its members regardless of LibreChat system role', async () => {
@@ -155,16 +158,31 @@ describe('request_approval role handoff tool', () => {
       memberIds: ['64b000000000000000000004'],
       tenantId: 'tenant-a',
     }]);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
+    const tool = createRoleHandoffTool({ req, agentId: 'architect-agent' });
 
     const result = JSON.parse(await tool.invoke({
       title: 'Security review',
       recipientRole: 'Security Reviewers',
+      participantRole: 'collaborator',
       summary: 'Review the proposed change.',
     }));
 
     expect(result.status).toBe('submitted');
-    expect(result.approvers).toEqual(['security@example.com']);
+    expect(result.participantRole).toBe('collaborator');
+    expect(result.recipients).toEqual(['security@example.com']);
+    expect(db.saveConvo).toHaveBeenCalledWith(
+      { userId: '64b000000000000000000004' },
+      expect.objectContaining({ title: 'Consultation: Security review', requestRole: 'collaborator' }),
+      { context: 'request role handoff' },
+    );
+    expect(updateTrackedRequest).toHaveBeenCalledWith(
+      req.config.requestTracker,
+      undefined,
+      'request-test',
+      'tenant-a',
+      req.user.id,
+      { title: 'Security review', summary: 'Review the proposed change.' },
+    );
     expect(db.findGroupsByNamePattern).toHaveBeenCalledWith('Security Reviewers', null, 100);
     expect(db.findUsers).toHaveBeenNthCalledWith(
       2,
@@ -187,23 +205,25 @@ describe('request_approval role handoff tool', () => {
       memberIds: ['64b000000000000000000004'],
       tenantId: 'tenant-b',
     }]);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
+    const tool = createRoleHandoffTool({ req, agentId: 'architect-agent' });
 
     await expect(tool.invoke({
       title: 'Security review',
       recipientRole: 'Security Reviewers',
+      participantRole: 'collaborator',
       summary: 'Review the proposed change.',
-    })).rejects.toThrow('No users match the requested reviewer role in your organization.');
+    })).rejects.toThrow('No users match the requested role or group in your organization.');
     expect(db.createSharedLink).not.toHaveBeenCalled();
   });
 
   it('rejects a conversation that is not owned by the requester', async () => {
     db.getConvo.mockResolvedValue(null);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
+    const tool = createRoleHandoffTool({ req, agentId: 'architect-agent' });
 
     await expect(tool.invoke({
       title: 'Review request',
       recipientRole: 'ADMIN',
+      participantRole: 'approver',
       summary: 'Proposed plan.',
     })).rejects.toThrow('The current conversation is not owned by the signed-in user.');
     expect(db.findRolesByNames).not.toHaveBeenCalled();
@@ -214,13 +234,14 @@ describe('request_approval role handoff tool', () => {
 
   it('fails without creating a share when the requested role has no users', async () => {
     db.findUsers.mockResolvedValue([]);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
+    const tool = createRoleHandoffTool({ req, agentId: 'architect-agent' });
 
     await expect(tool.invoke({
       title: 'Review request',
       recipientRole: 'Security Reviewers',
+      participantRole: 'collaborator',
       summary: 'Proposed plan.',
-    })).rejects.toThrow('No users match the requested reviewer role in your organization.');
+    })).rejects.toThrow('No users match the requested role or group in your organization.');
     expect(db.createSharedLink).not.toHaveBeenCalled();
   });
 });

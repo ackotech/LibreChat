@@ -53,27 +53,30 @@ async function resolveRoleRecipients(recipientRole, requester) {
   return [...new Map([...byRole, ...byGroup].map((user) => [String(user._id), user])).values()];
 }
 
-function createApprovalTool({ req, agentId }) {
+function createRoleHandoffTool({ req, agentId }) {
   const schema = z.object({
-    title: z.string().min(1).max(120).describe('Short title for the review request.'),
+    title: z.string().min(1).max(120).describe('Short title for this request handoff.'),
     recipientRole: z
       .string()
       .trim()
       .min(1)
       .max(120)
       .describe('Exact LibreChat role or group name selected by the applicable knowledge policy.'),
+    participantRole: z
+      .enum(['approver', 'collaborator'])
+      .describe('Request relationship selected by the workflow: approver for a decision, collaborator for consultation.'),
     summary: z
       .string()
       .min(1)
       .max(8000)
-      .describe('The agreed plan, rationale, risks, assumptions, and requested approval.'),
+      .describe('The relevant request context, rationale, risks, assumptions, and question or action needed from the recipient.'),
   });
   return new DynamicStructuredTool({
-    name: 'request_approval',
+    name: 'route_request_to_role',
     description:
-      'Create or update request-linked 1:1 handoff chats for members of the exact LibreChat role or group specified by the Architect from applicable knowledge. This tool resolves directory members, verifies tenant and agent access, links chats, and shares read-only context. It does not decide whether review is required or execute infrastructure changes.',
+      'Resolve members of the exact LibreChat role or group selected from applicable knowledge, verify tenant and agent access, then create or update request-linked 1:1 chats and share read-only context. The Architect selects approver versus collaborator from the workflow purpose. This tool only routes and records that relationship; it does not decide policy or execute changes.',
     schema,
-    func: async ({ title, recipientRole, summary }) => {
+    func: async ({ title, recipientRole, participantRole, summary }) => {
       const requester = req?.user;
       if (!requester?.id || !requester?.role) {
         throw new Error('The signed-in user could not be verified.');
@@ -100,33 +103,33 @@ function createApprovalTool({ req, agentId }) {
       await db.saveConvo(
         { userId: requester.id },
         { conversationId, requestId, requestRole: 'requester' },
-        { context: 'admin approval handoff' },
+        { context: 'request role handoff' },
       );
       const linkedSource = await db.getConvo(requester.id, conversationId);
       if (!linkedSource || linkedSource.requestId !== requestId || linkedSource.requestRole !== 'requester') {
-        throw new Error('The original request chat could not be linked for review.');
+        throw new Error('The original request chat could not be linked to the request.');
       }
 
-      let approvers = await resolveRoleRecipients(recipientRole, requester);
-      if (!approvers.length) {
-        throw new Error('No users match the requested reviewer role in your organization.');
+      let recipients = await resolveRoleRecipients(recipientRole, requester);
+      if (!recipients.length) {
+        throw new Error('No users match the requested role or group in your organization.');
       }
-      approvers = approvers.filter((approver) => String(approver._id) !== requester.id);
-      if (!approvers.length) {
-        throw new Error('The requester cannot be the approver for their own request.');
+      recipients = recipients.filter((recipient) => String(recipient._id) !== requester.id);
+      if (!recipients.length) {
+        throw new Error('The requester cannot be routed to themselves.');
       }
       const accessCheck = createAgentAccessCheck(req);
-      const authorizedApprovers = [];
-      for (const approver of approvers) {
-        const approverReq = { ...req, user: { ...approver, id: String(approver._id) } };
-        const canUseAgent = await createAgentAccessCheck(approverReq)({
+      const authorizedRecipients = [];
+      for (const recipient of recipients) {
+        const recipientReq = { ...req, user: { ...recipient, id: String(recipient._id) } };
+        const canUseAgent = await createAgentAccessCheck(recipientReq)({
           agentId,
           endpoint: sourceConversation.endpoint || 'agents',
         });
-        if (canUseAgent) authorizedApprovers.push(approver);
+        if (canUseAgent) authorizedRecipients.push(recipient);
       }
-      if (!authorizedApprovers.length) {
-        throw new Error('No eligible approver has access to this agent. Ask an agent administrator to grant access.');
+      if (!authorizedRecipients.length) {
+        throw new Error('No eligible recipient has access to this agent. Ask an agent administrator to grant access.');
       }
       const sharedLinkViewerRole = await db.findRoleByIdentifier(AccessRoleIds.SHARED_LINK_VIEWER);
       if (!sharedLinkViewerRole) {
@@ -177,18 +180,25 @@ function createApprovalTool({ req, agentId }) {
           requestId,
           requester.tenantId || 'default',
           requester.id,
-          { title: title.trim(), summary: summary.trim(), status: 'review' },
+          {
+            title: title.trim(),
+            summary: summary.trim(),
+            ...(participantRole === 'approver' ? { status: 'review' } : {}),
+          },
         );
       }
-      const reviewConversationIds = [];
-      for (const approver of authorizedApprovers) {
-        const approverId = String(approver._id);
-        const reviewConversationId = stableUUID(`request-thread:${requestId}:${approverId}`);
+      const recipientConversationIds = [];
+      for (const recipient of authorizedRecipients) {
+        const recipientId = String(recipient._id);
+        const recipientConversationId = stableUUID(`request-thread:${requestId}:${recipientId}`);
         const messageId = stableUUID(
-          `request-review-update:${requestId}:${approverId}:${createHash('sha256').update(summary.trim()).digest('hex')}`,
+          `request-role-update:${requestId}:${recipientId}:${createHash('sha256').update(summary.trim()).digest('hex')}`,
         );
-        const reviewText = [
-          `Review requested from ${approver.name || approver.email || approverId} by ${requester.name || requester.email || requester.id}.`,
+        const roleLabel = participantRole === 'approver' ? 'Review' : 'Consultation';
+        const recipientName = recipient.name || recipient.email || recipientId;
+        const requesterName = requester.name || requester.email || requester.id;
+        const handoffText = [
+          `${roleLabel} requested from ${recipientName} by ${requesterName}.`,
           '',
           `Request: ${title.trim()}`,
           '',
@@ -196,12 +206,14 @@ function createApprovalTool({ req, agentId }) {
           '',
           `Request thread with ${requester.name || requester.email || 'the requester'} (requester): ${sourceLink}`,
           '',
-          'Please discuss your decision here. No infrastructure changes have been made.',
+          participantRole === 'approver'
+            ? 'Please record your decision here. No infrastructure changes have been made.'
+            : 'Please discuss the request here. Your messages will be shared with the requester through this linked request.',
         ].join('\n');
 
         await db.grantPermission(
           PrincipalType.USER,
-          approverId,
+          recipientId,
           ResourceType.SHARED_LINK,
           sharedLinkId,
           sharedLinkViewerRole.permBits,
@@ -209,63 +221,63 @@ function createApprovalTool({ req, agentId }) {
           undefined,
           sharedLinkViewerRole._id,
         );
-        const existingReview = await db.getConvo(approverId, reviewConversationId);
-        const existingMessages = existingReview
-          ? await db.getMessages({ user: approverId, conversationId: reviewConversationId }, 'messageId')
+        const existingRecipientChat = await db.getConvo(recipientId, recipientConversationId);
+        const existingMessages = existingRecipientChat
+          ? await db.getMessages({ user: recipientId, conversationId: recipientConversationId }, 'messageId')
           : [];
         const isFirstMessage = existingMessages.length === 0;
         const savedMessage = await db.saveMessage(
-          { userId: approverId },
+          { userId: recipientId },
           {
-            conversationId: reviewConversationId,
+            conversationId: recipientConversationId,
             messageId,
             ...(isFirstMessage
-              ? { sender: 'assistant', text: reviewText, parentMessageId: '00000000-0000-0000-0000-000000000000' }
+              ? { sender: 'assistant', text: handoffText, parentMessageId: '00000000-0000-0000-0000-000000000000' }
               : {
                   sender: 'assistant',
                   text: `Request update from ${requester.name || requester.email || requester.id}.\n\n${summary.trim()}`,
                   parentMessageId: existingMessages[existingMessages.length - 1].messageId,
                 }),
             isCreatedByUser: false,
-            model: 'request-review',
+            model: 'request-handoff',
             endpoint: 'agents',
           },
-          { context: 'request approval handoff' },
+          { context: 'request role handoff' },
         );
         if (!savedMessage) {
-          throw new Error('Could not persist the request update for the approver.');
+          throw new Error('Could not persist the request update for the recipient.');
         }
         await db.saveConvo(
-          { userId: approverId },
+          { userId: recipientId },
           {
-            conversationId: reviewConversationId,
-            title: `Review: ${title.trim()}`,
+            conversationId: recipientConversationId,
+            title: `${roleLabel}: ${title.trim()}`,
             endpoint: 'agents',
             agent_id: agentId,
             requestId,
-            requestRole: 'approver',
+            requestRole: participantRole,
           },
-          { context: 'request approval handoff' },
+          { context: 'request role handoff' },
         );
-        const savedReview = await db.getConvo(approverId, reviewConversationId);
+        const savedRecipientChat = await db.getConvo(recipientId, recipientConversationId);
         if (
-          !savedReview ||
-          savedReview.requestId !== requestId ||
-          savedReview.requestRole !== 'approver'
+          !savedRecipientChat ||
+          savedRecipientChat.requestId !== requestId ||
+          savedRecipientChat.requestRole !== participantRole
         ) {
-          throw new Error('The approver review chat could not be linked to the original request.');
+          throw new Error('The recipient chat could not be linked to the original request.');
         }
         await syncTrackedChat(req, {
           requestId,
-          conversationId: reviewConversationId,
-          userId: approverId,
-          email: approver.email,
-          name: approver.name,
-          role: 'approver',
+          conversationId: recipientConversationId,
+          userId: recipientId,
+          email: recipient.email,
+          name: recipient.name,
+          role: participantRole,
           agentId,
-          title: `Review: ${title.trim()}`,
+          title: `${roleLabel}: ${title.trim()}`,
         });
-        reviewConversationIds.push(reviewConversationId);
+        recipientConversationIds.push(recipientConversationId);
       }
 
       const linkedThreads = await db.getRequestConversations({
@@ -282,15 +294,19 @@ function createApprovalTool({ req, agentId }) {
       return JSON.stringify({
         status: 'submitted',
         recipientRole,
-        approvers: authorizedApprovers.map((approver) => approver.email),
+        participantRole,
+        recipients: authorizedRecipients.map((recipient) => recipient.email),
         sourceLink,
-        reviewLinks: reviewConversationIds.map(
+        participantLinks: recipientConversationIds.map(
           (id) => `${(process.env.DOMAIN_CLIENT || 'http://localhost:3080').replace(/\/$/, '')}/c/${id}`,
         ),
-        message: 'The review request was sent. No infrastructure changes have been made.',
+        message:
+          participantRole === 'approver'
+            ? 'The approval request was sent. No infrastructure changes have been made.'
+            : 'The request context was shared with the selected collaborator.',
       });
     },
   });
 }
 
-module.exports = { createApprovalTool, resolveRoleRecipients };
+module.exports = { createRoleHandoffTool, resolveRoleRecipients };

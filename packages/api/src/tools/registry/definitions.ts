@@ -454,8 +454,8 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: AskUserQuestionToolDefinition.schema as ExtendedJsonSchema,
     toolType: 'builtin',
   },
-  request_approval: {
-    name: 'request_approval',
+  route_request_to_role: {
+    name: 'route_request_to_role',
     description:
       'Create or update a private, request-linked 1:1 handoff chat for the explicitly selected participant. The agent decides whether and whom to involve. This tool handles request/chat linking and sharing only; it does not decide whether review is required, record a decision, or execute infrastructure changes.',
     schema: {
@@ -473,6 +473,11 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
           maxLength: 120,
           description: 'Exact LibreChat role or group name selected by the applicable knowledge policy.',
         },
+        participantRole: {
+          type: 'string',
+          enum: ['approver', 'collaborator'],
+          description: 'Request relationship selected by the workflow: approver for a decision, collaborator for consultation.',
+        },
         summary: {
           type: 'string',
           minLength: 1,
@@ -480,7 +485,7 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
           description: 'Agreed proposal, rationale, risks, assumptions, and requested approval.',
         },
       },
-      required: ['title', 'recipientRole', 'summary'],
+      required: ['title', 'recipientRole', 'participantRole', 'summary'],
       additionalProperties: false,
     } as ExtendedJsonSchema,
     toolType: 'builtin',

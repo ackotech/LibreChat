@@ -30,14 +30,14 @@ describe('definitions.ts', () => {
     expect(definition.description.length).toBeLessThanOrEqual(MAX_PROVIDER_TOOL_DESCRIPTION_LENGTH);
   });
 
-  it('registers the request-specific approval handoff as a serializable built-in tool', async () => {
-    const definition = getToolDefinition('request_approval');
+  it('registers role-based request routing as a serializable built-in tool', async () => {
+    const definition = getToolDefinition('route_request_to_role');
     expect(definition).toEqual(
       expect.objectContaining({
-        name: 'request_approval',
+        name: 'route_request_to_role',
         toolType: 'builtin',
         schema: expect.objectContaining({
-          required: ['title', 'recipientRole', 'summary'],
+          required: ['title', 'recipientRole', 'participantRole', 'summary'],
           additionalProperties: false,
         }),
       }),
@@ -45,7 +45,7 @@ describe('definitions.ts', () => {
 
     mockIsBuiltInTool.mockReturnValue(true);
     const result = await loadToolDefinitions(
-      { userId: 'user-123', agentId: 'agent-123', tools: ['request_approval'] },
+      { userId: 'user-123', agentId: 'agent-123', tools: ['route_request_to_role'] },
       {
         getOrFetchMCPServerTools: mockGetOrFetchMCPServerTools,
         isBuiltInTool: mockIsBuiltInTool,
@@ -53,21 +53,21 @@ describe('definitions.ts', () => {
     );
     expect(result.toolDefinitions).toEqual([
       expect.objectContaining({
-        name: 'request_approval',
+        name: 'route_request_to_role',
         parameters: definition?.schema,
       }),
     ]);
   });
 
-  it('registers the generic role-based handoff tool without embedding the approval rule', () => {
-    const definition = getToolDefinition('request_approval');
+  it('registers role-based request routing without embedding approval policy', () => {
+    const definition = getToolDefinition('route_request_to_role');
 
     expect(definition).toEqual(
       expect.objectContaining({
-        name: 'request_approval',
+        name: 'route_request_to_role',
         toolType: 'builtin',
         schema: expect.objectContaining({
-          required: ['title', 'recipientRole', 'summary'],
+          required: ['title', 'recipientRole', 'participantRole', 'summary'],
           additionalProperties: false,
         }),
       }),

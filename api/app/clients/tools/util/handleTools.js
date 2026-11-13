@@ -65,7 +65,7 @@ const {
 const { getMCPRequestContext } = require('~/server/services/MCPRequestContext');
 const { createOpenIDSessionTokenProvider } = require('~/server/services/OpenIDSessionRefresh');
 const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSearch');
-const { createApprovalTool } = require('./requestApproval');
+const { createRoleHandoffTool } = require('./requestRoleHandoff');
 const { createRequestThreadTools } = require('./requestThreads');
 const { createRequestDecisionTool } = require('./requestDecision');
 const { createMentionedPeopleTool } = require('./mentionedPeople');
@@ -227,7 +227,7 @@ const loadTools = async ({
   };
 
   const customConstructors = {
-    request_approval: async () => createApprovalTool({ req: options.req, agentId: agent?.id }),
+    route_request_to_role: async () => createRoleHandoffTool({ req: options.req, agentId: agent?.id }),
     record_request_decision: async () => createRequestDecisionTool({ req: options.req }),
     message_request_participant: async () =>
       createRequestThreadTools({ req: options.req, agentId: agent?.id })[0],
