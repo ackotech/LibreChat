@@ -20,13 +20,48 @@ function stableUUID(value) {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`;
 }
 
-function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
-  const isAdminApproval = toolName === 'request_admin_approval';
+function sameTenant(left, right) {
+  return (left?.tenantId ?? null) === (right?.tenantId ?? null);
+}
+
+async function resolveRoleRecipients(recipientRole, requester) {
+  const tenantId = requester.tenantId ?? null;
+  const roleDefinitions = await db.findRolesByNames([recipientRole], '_id name tenantId');
+  const roleIds = roleDefinitions
+    .filter((role) => role.name?.toLowerCase() === recipientRole.toLowerCase() && sameTenant(role, requester))
+    .map((role) => String(role._id));
+  const roleNames = [...new Set([recipientRole, recipientRole.toUpperCase(), ...roleIds])];
+  const fields = '_id email name role tenantId';
+  const options = { limit: 100, sort: { email: 1 } };
+  const byRole = await db.findUsers({ role: { $in: roleNames }, tenantId }, fields, options);
+
+  const matchingGroups = (await db.findGroupsByNamePattern(recipientRole, null, 100)).filter(
+    (group) => group.name?.toLowerCase() === recipientRole.toLowerCase() && sameTenant(group, requester),
+  );
+  const memberIds = [...new Set(matchingGroups.flatMap((group) => group.memberIds ?? []))];
+  const byGroup = memberIds.length
+    ? await db.findUsers(
+        {
+          $or: [{ _id: { $in: memberIds } }, { idOnTheSource: { $in: memberIds } }],
+          tenantId,
+        },
+        fields,
+        options,
+      )
+    : [];
+
+  return [...new Map([...byRole, ...byGroup].map((user) => [String(user._id), user])).values()];
+}
+
+function createApprovalTool({ req, agentId }) {
   const schema = z.object({
     title: z.string().min(1).max(120).describe('Short title for the review request.'),
-    ...(!isAdminApproval && {
-      approverEmail: z.string().email().describe('Email of the person assigned to approve this request.'),
-    }),
+    recipientRole: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .describe('Exact LibreChat role or group name selected by the applicable knowledge policy.'),
     summary: z
       .string()
       .min(1)
@@ -34,11 +69,11 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
       .describe('The agreed plan, rationale, risks, assumptions, and requested approval.'),
   });
   return new DynamicStructuredTool({
-    name: toolName,
+    name: 'request_approval',
     description:
-      'Create or update the request handoff threads selected by the architect agent. This tool only links the source chat to the request, creates private read-only access, and writes the handoff summary into one reusable 1:1 chat per recipient. The agent decides whether a review is required and whom to involve. Does not decide whether approval is needed or execute infrastructure changes.',
+      'Create or update request-linked 1:1 handoff chats for members of the exact LibreChat role or group specified by the Architect from applicable knowledge. This tool resolves directory members, verifies tenant and agent access, links chats, and shares read-only context. It does not decide whether review is required or execute infrastructure changes.',
     schema,
-    func: async ({ title, approverEmail, summary }) => {
+    func: async ({ title, recipientRole, summary }) => {
       const requester = req?.user;
       if (!requester?.id || !requester?.role) {
         throw new Error('The signed-in user could not be verified.');
@@ -72,32 +107,9 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
         throw new Error('The original request chat could not be linked for review.');
       }
 
-      let approvers;
-      if (isAdminApproval) {
-        approvers = await db.findUsers(
-          { role: 'ADMIN', tenantId: requester.tenantId ?? null },
-          '_id email name role tenantId',
-          { limit: 100, sort: { email: 1 } },
-        );
-      } else {
-        if (!approverEmail) {
-          throw new Error('An approver email is required for request_approval.');
-        }
-        approvers = await db.findUsers(
-          {
-            email: approverEmail.trim().toLowerCase(),
-            tenantId: requester.tenantId ?? null,
-          },
-          '_id email name role tenantId',
-          { limit: 1 },
-        );
-      }
+      let approvers = await resolveRoleRecipients(recipientRole, requester);
       if (!approvers.length) {
-        throw new Error(
-          isAdminApproval
-            ? 'No administrator is available to review this request.'
-            : 'The assigned approver could not be found in your organization.',
-        );
+        throw new Error('No users match the requested reviewer role in your organization.');
       }
       approvers = approvers.filter((approver) => String(approver._id) !== requester.id);
       if (!approvers.length) {
@@ -269,6 +281,7 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
 
       return JSON.stringify({
         status: 'submitted',
+        recipientRole,
         approvers: authorizedApprovers.map((approver) => approver.email),
         sourceLink,
         reviewLinks: reviewConversationIds.map(
@@ -280,4 +293,4 @@ function createApprovalTool({ req, agentId, toolName = 'request_approval' }) {
   });
 }
 
-module.exports = { createApprovalTool, createAdminApprovalTool: createApprovalTool };
+module.exports = { createApprovalTool, resolveRoleRecipients };

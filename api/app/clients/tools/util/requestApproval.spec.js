@@ -1,9 +1,11 @@
 const db = require('../../../../models');
-const { createApprovalTool } = require('./adminApproval');
+const { createApprovalTool } = require('./requestApproval');
 
 jest.mock('../../../../models', () => ({
   getConvo: jest.fn(),
   findUsers: jest.fn(),
+  findRolesByNames: jest.fn(),
+  findGroupsByNamePattern: jest.fn(),
   getMessages: jest.fn(),
   findRoleByIdentifier: jest.fn(),
   getSharedLink: jest.fn(),
@@ -29,7 +31,7 @@ jest.mock('@librechat/api', () => ({
 
 const { resolveRequestChat, updateTrackedRequest } = require('@librechat/api');
 
-describe('request_admin_approval tool', () => {
+describe('request_approval role handoff tool', () => {
   const req = {
     user: {
       id: '64b000000000000000000001',
@@ -44,7 +46,6 @@ describe('request_admin_approval tool', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    req.user.role = 'USER';
     resolveRequestChat.mockResolvedValue({ id: 'request-test' });
     updateTrackedRequest.mockResolvedValue({ id: 'request-test' });
     const conversations = new Map();
@@ -57,11 +58,14 @@ describe('request_admin_approval tool', () => {
       }
       return conversations.get(`${userId}:${conversationId}`) ?? null;
     });
+    db.findRolesByNames.mockResolvedValue([]);
+    db.findGroupsByNamePattern.mockResolvedValue([]);
     db.findUsers.mockResolvedValue([{
       _id: '64b000000000000000000002',
       email: 'approver@example.com',
       name: 'Approver',
       role: 'ADMIN',
+      tenantId: 'tenant-a',
     }]);
     db.findRoleByIdentifier.mockResolvedValue({ _id: '64b000000000000000000003', permBits: 1 });
     db.getSharedLink.mockResolvedValue({ success: false, shareId: null });
@@ -79,21 +83,24 @@ describe('request_admin_approval tool', () => {
     ]);
   });
 
-  it('routes a confirmed non-admin request to admins without asking the requester for an email', async () => {
-    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_admin_approval' });
+  it('resolves the policy role against the authenticated tenant directory', async () => {
+    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
+    expect(tool.schema.shape).toHaveProperty('recipientRole');
     expect(tool.schema.shape).not.toHaveProperty('approverEmail');
-    const result = JSON.parse(
-      await tool.invoke({
-        title: 'Claim status event delivery',
-        summary: 'Use an outbox and SQS FIFO; no infrastructure change has been made.',
-      }),
-    );
+
+    const result = JSON.parse(await tool.invoke({
+      title: 'Claim status event delivery',
+      recipientRole: 'ADMIN',
+      summary: 'Use an outbox and SQS FIFO; no infrastructure change has been made.',
+    }));
 
     expect(result.status).toBe('submitted');
+    expect(result.recipientRole).toBe('ADMIN');
     expect(result.approvers).toEqual(['approver@example.com']);
     expect(result.sourceLink).toBe('http://localhost:3080/share/private-share-id');
-    expect(db.findUsers).toHaveBeenCalledWith(
-      { role: 'ADMIN', tenantId: 'tenant-a' },
+    expect(db.findUsers).toHaveBeenNthCalledWith(
+      1,
+      { role: { $in: ['ADMIN'] }, tenantId: 'tenant-a' },
       '_id email name role tenantId',
       { limit: 100, sort: { email: 1 } },
     );
@@ -133,77 +140,87 @@ describe('request_admin_approval tool', () => {
     expect(result.reviewLinks).toHaveLength(1);
   });
 
-  it('lets the agent-requested handoff create a second-admin thread without backend policy checks', async () => {
-    req.user.role = 'ADMIN';
-    db.findUsers.mockResolvedValue([
-      { _id: req.user.id, email: req.user.email, name: req.user.name, role: 'ADMIN' },
-      { _id: '64b000000000000000000002', email: 'second-admin@example.com', name: 'Second Admin', role: 'ADMIN' },
-    ]);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_admin_approval' });
+  it('resolves a named domain group and routes to its members regardless of LibreChat system role', async () => {
+    db.findUsers
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        _id: '64b000000000000000000004',
+        email: 'security@example.com',
+        name: 'Security Reviewer',
+        role: 'USER',
+        tenantId: 'tenant-a',
+      }]);
+    db.findGroupsByNamePattern.mockResolvedValue([{
+      name: 'Security Reviewers',
+      memberIds: ['64b000000000000000000004'],
+      tenantId: 'tenant-a',
+    }]);
+    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
 
-    const result = JSON.parse(await tool.invoke({ title: 'Change request', summary: 'Agreed plan.' }));
+    const result = JSON.parse(await tool.invoke({
+      title: 'Security review',
+      recipientRole: 'Security Reviewers',
+      summary: 'Review the proposed change.',
+    }));
 
     expect(result.status).toBe('submitted');
-    expect(result.approvers).toEqual(['second-admin@example.com']);
-    expect(db.saveMessage).toHaveBeenCalledWith(
-      { userId: '64b000000000000000000002' },
-      expect.objectContaining({ text: expect.not.stringContaining('Second-review policy basis:') }),
-      { context: 'request approval handoff' },
+    expect(result.approvers).toEqual(['security@example.com']);
+    expect(db.findGroupsByNamePattern).toHaveBeenCalledWith('Security Reviewers', null, 100);
+    expect(db.findUsers).toHaveBeenNthCalledWith(
+      2,
+      {
+        $or: [
+          { _id: { $in: ['64b000000000000000000004'] } },
+          { idOnTheSource: { $in: ['64b000000000000000000004'] } },
+        ],
+        tenantId: 'tenant-a',
+      },
+      '_id email name role tenantId',
+      { limit: 100, sort: { email: 1 } },
     );
   });
 
-  it('lets the agent route an authenticated requester to a specific reviewer', async () => {
-    req.user.role = 'USER';
-    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_approval' });
-
-    const result = JSON.parse(await tool.invoke({
-      title: 'Change request',
-      approverEmail: 'approver@example.com',
-      summary: 'Agreed plan.',
-    }));
-
-    expect(result.status).toBe('submitted');
-    expect(result.approvers).toEqual(['approver@example.com']);
-  });
-
-  it('routes to the reviewer selected by the agent without applying a backend role policy', async () => {
-    req.user.role = 'USER';
-    db.findUsers.mockResolvedValue([{
-      _id: '64b000000000000000000002',
-      email: 'collaborator@example.com',
-      name: 'Collaborator',
-      role: 'USER',
+  it('does not select a same-named group from another tenant', async () => {
+    db.findUsers.mockResolvedValue([]);
+    db.findGroupsByNamePattern.mockResolvedValue([{
+      name: 'Security Reviewers',
+      memberIds: ['64b000000000000000000004'],
+      tenantId: 'tenant-b',
     }]);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_approval' });
+    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
 
-    const result = JSON.parse(await tool.invoke({
-      title: 'Change request',
-      approverEmail: 'collaborator@example.com',
-      summary: 'Agreed plan.',
-    }));
-
-    expect(result.status).toBe('submitted');
-    expect(result.approvers).toEqual(['collaborator@example.com']);
+    await expect(tool.invoke({
+      title: 'Security review',
+      recipientRole: 'Security Reviewers',
+      summary: 'Review the proposed change.',
+    })).rejects.toThrow('No users match the requested reviewer role in your organization.');
+    expect(db.createSharedLink).not.toHaveBeenCalled();
   });
 
   it('rejects a conversation that is not owned by the requester', async () => {
     db.getConvo.mockResolvedValue(null);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_admin_approval' });
+    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
 
-    await expect(
-      tool.invoke({ title: 'Review request', approverEmail: 'approver@example.com', summary: 'Proposed plan.' }),
-    ).rejects.toThrow('The current conversation is not owned by the signed-in user.');
+    await expect(tool.invoke({
+      title: 'Review request',
+      recipientRole: 'ADMIN',
+      summary: 'Proposed plan.',
+    })).rejects.toThrow('The current conversation is not owned by the signed-in user.');
+    expect(db.findRolesByNames).not.toHaveBeenCalled();
+    expect(db.findGroupsByNamePattern).not.toHaveBeenCalled();
     expect(db.findUsers).not.toHaveBeenCalled();
     expect(db.createSharedLink).not.toHaveBeenCalled();
   });
 
-  it('fails rather than claiming success when no administrator is available', async () => {
+  it('fails without creating a share when the requested role has no users', async () => {
     db.findUsers.mockResolvedValue([]);
-    const tool = createApprovalTool({ req, agentId: 'architect-agent', toolName: 'request_admin_approval' });
+    const tool = createApprovalTool({ req, agentId: 'architect-agent' });
 
-    await expect(
-      tool.invoke({ title: 'Review request', approverEmail: 'missing@example.com', summary: 'Proposed plan.' }),
-    ).rejects.toThrow('No administrator is available to review this request.');
+    await expect(tool.invoke({
+      title: 'Review request',
+      recipientRole: 'Security Reviewers',
+      summary: 'Proposed plan.',
+    })).rejects.toThrow('No users match the requested reviewer role in your organization.');
     expect(db.createSharedLink).not.toHaveBeenCalled();
   });
 });

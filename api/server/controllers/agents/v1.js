@@ -100,7 +100,6 @@ const systemTools = {
   [Tools.file_search]: true,
   [Tools.web_search]: true,
   [Tools.memory]: true,
-  request_admin_approval: true,
   request_approval: true,
   record_request_decision: true,
   message_request_participant: true,

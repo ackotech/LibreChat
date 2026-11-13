@@ -37,7 +37,7 @@ describe('definitions.ts', () => {
         name: 'request_approval',
         toolType: 'builtin',
         schema: expect.objectContaining({
-          required: ['title', 'approverEmail', 'summary'],
+          required: ['title', 'recipientRole', 'summary'],
           additionalProperties: false,
         }),
       }),
@@ -59,15 +59,15 @@ describe('definitions.ts', () => {
     ]);
   });
 
-  it('registers the thread-handoff helper for administrators without embedding the approval rule', () => {
-    const definition = getToolDefinition('request_admin_approval');
+  it('registers the generic role-based handoff tool without embedding the approval rule', () => {
+    const definition = getToolDefinition('request_approval');
 
     expect(definition).toEqual(
       expect.objectContaining({
-        name: 'request_admin_approval',
+        name: 'request_approval',
         toolType: 'builtin',
         schema: expect.objectContaining({
-          required: ['title', 'summary'],
+          required: ['title', 'recipientRole', 'summary'],
           additionalProperties: false,
         }),
       }),

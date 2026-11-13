@@ -744,7 +744,6 @@ const nativeTools = new Set([
   Tools.file_search,
   Tools.web_search,
   Tools.memory,
-  'request_admin_approval',
   'request_approval',
   'record_request_decision',
   'message_request_participant',

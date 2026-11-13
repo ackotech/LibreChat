@@ -454,21 +454,6 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: AskUserQuestionToolDefinition.schema as ExtendedJsonSchema,
     toolType: 'builtin',
   },
-  request_admin_approval: {
-    name: 'request_admin_approval',
-    description:
-      'Create or update private, request-linked 1:1 handoff chats for the eligible administrators. The agent decides whether this handoff is appropriate. This tool handles request/chat linking and sharing only; it does not decide whether review is required, record a decision, or execute infrastructure changes.',
-    schema: {
-      type: 'object',
-      properties: {
-        title: { type: 'string', minLength: 1, maxLength: 120, description: 'Short title for the review request.' },
-        summary: { type: 'string', minLength: 1, maxLength: 8000, description: 'Agreed proposal, rationale, risks, assumptions, and requested approval.' },
-      },
-      required: ['title', 'summary'],
-      additionalProperties: false,
-    } as ExtendedJsonSchema,
-    toolType: 'builtin',
-  },
   request_approval: {
     name: 'request_approval',
     description:
@@ -476,11 +461,26 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: {
       type: 'object',
       properties: {
-        title: { type: 'string', minLength: 1, maxLength: 120, description: 'Short title for the review request.' },
-        approverEmail: { type: 'string', format: 'email', description: 'Email of the person assigned to approve this request.' },
-        summary: { type: 'string', minLength: 1, maxLength: 8000, description: 'Agreed proposal, rationale, risks, assumptions, and requested approval.' },
+        title: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 120,
+          description: 'Short title for the review request.',
+        },
+        recipientRole: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 120,
+          description: 'Exact LibreChat role or group name selected by the applicable knowledge policy.',
+        },
+        summary: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 8000,
+          description: 'Agreed proposal, rationale, risks, assumptions, and requested approval.',
+        },
       },
-      required: ['title', 'approverEmail', 'summary'],
+      required: ['title', 'recipientRole', 'summary'],
       additionalProperties: false,
     } as ExtendedJsonSchema,
     toolType: 'builtin',
