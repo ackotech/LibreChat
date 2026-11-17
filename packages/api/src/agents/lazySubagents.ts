@@ -1,5 +1,61 @@
 import { createHash } from 'crypto';
+import type { SubagentResolveContext } from '@librechat/agents';
 import type { Agent } from 'librechat-data-provider';
+
+type ResolutionStage = 'started' | 'succeeded' | 'failed';
+
+type ResolutionObservation = {
+  phase: 'config';
+  stage: ResolutionStage;
+  executionId?: string;
+  parentRunId?: string;
+  parentToolCallId?: string;
+  threadId?: string;
+  descriptorType?: string;
+  configId?: string;
+  aborted: boolean;
+  hasConfigurable: boolean;
+};
+
+function safeResolutionId(value: string | undefined): string | undefined {
+  return value != null && /^[a-zA-Z0-9_.:-]{1,256}$/.test(value) ? value : undefined;
+}
+
+/** Observes only the application-owned config resolver, without changing its outcome. */
+export async function observeLazySubagentResolution<T>(
+  context: SubagentResolveContext,
+  resolve: () => Promise<T>,
+  observe: (observation: ResolutionObservation) => void,
+): Promise<T> {
+  const emit = (stage: ResolutionStage): void => {
+    try {
+      observe({
+        phase: 'config',
+        stage,
+        executionId: safeResolutionId(context.executionId),
+        parentRunId: safeResolutionId(context.parentRunId),
+        parentToolCallId: safeResolutionId(context.parentToolCallId),
+        threadId: safeResolutionId(context.threadId),
+        descriptorType: safeResolutionId(context.descriptor.type),
+        configId: safeResolutionId(context.descriptor.configId),
+        aborted: context.signal.aborted,
+        hasConfigurable: context.configurable != null,
+      });
+    } catch {
+      // Observability must not alter resolution or mask its original failure.
+    }
+  };
+
+  emit('started');
+  try {
+    const result = await resolve();
+    emit('succeeded');
+    return result;
+  } catch (error) {
+    emit('failed');
+    throw error;
+  }
+}
 
 type VersionedAgent = Pick<
   Agent,

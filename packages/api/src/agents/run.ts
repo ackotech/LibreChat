@@ -119,6 +119,7 @@ import { getDirectDispatcher, getProxyDispatcher } from '~/utils/proxy';
 import { getAzureCredentials, constructAzureURL } from '~/utils/azure';
 import { getBuiltInBaseURL } from '~/endpoints/openai/initialize';
 import { getProviderConfig } from '~/endpoints/config/providers';
+import { observeLazySubagentResolution } from './lazySubagents';
 import { buildToolApprovalHooks } from '~/agents/hitl/hooks';
 import { getAgentCheckpointer } from '~/agents/checkpointer';
 import { getPluginHookSource } from '~/agents/hooks/source';
@@ -1616,7 +1617,11 @@ function createLazySubagentConfig(
       if (context.signal.aborted) {
         throw context.signal.reason ?? new Error('Subagent resolution was aborted.');
       }
-      const resolvedChild = await child.resolve(context);
+      const resolvedChild = await observeLazySubagentResolution(
+        context,
+        () => child.resolve(context),
+        (observation) => logger.info('[createRun] Lazy subagent config resolution', observation),
+      );
       if (context.signal.aborted) {
         throw context.signal.reason ?? new Error('Subagent resolution was aborted.');
       }
