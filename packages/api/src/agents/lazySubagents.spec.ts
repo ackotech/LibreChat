@@ -165,13 +165,17 @@ describe('observeLazySubagentResolution', () => {
     const result = {};
     const failure = new Error('resolver failure');
 
-    await expect(observeLazySubagentResolution(context, async () => result, observer)).resolves.toBe(
-      result,
-    );
     await expect(
-      observeLazySubagentResolution(context, async () => {
-        throw failure;
-      }, observer),
+      observeLazySubagentResolution(context, async () => result, observer),
+    ).resolves.toBe(result);
+    await expect(
+      observeLazySubagentResolution(
+        context,
+        async () => {
+          throw failure;
+        },
+        observer,
+      ),
     ).rejects.toBe(failure);
   });
 
